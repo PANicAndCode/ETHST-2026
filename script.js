@@ -1,6 +1,7 @@
 const COOLDOWN_MINUTES = 10;
 const STORAGE_PREFIX = "sigtau-easter-hunt-v1";
 const REMEMBERED_TEAM_KEY = `${STORAGE_PREFIX}-remembered-team`;
+const REMEMBERED_TEAM_STARTED_KEY = `${STORAGE_PREFIX}-remembered-team-started`;
 const ADMIN_PASSCODE = "bunnyboss";
 const MAP_ENABLED_KEY = `${STORAGE_PREFIX}-map-enabled`;
 const SHARED_SETTINGS_TEAM_ID = "__settings__";
@@ -20,12 +21,40 @@ let mapEnabled = localMapEnabled();
 function el(id){ return document.getElementById(id); }
 function storageKey(team){ return `${STORAGE_PREFIX}-${team}`; }
 function leaderboardKey(){ return `${STORAGE_PREFIX}-leaderboard`; }
-function rememberedTeam(){
+function rememberedTeamRecord(){
   const saved = localStorage.getItem(REMEMBERED_TEAM_KEY);
-  return saved && TEAMS[saved] ? saved : null;
+  if (!saved || !TEAMS[saved]) return null;
+  const startedRaw = localStorage.getItem(REMEMBERED_TEAM_STARTED_KEY);
+  return { team: saved, startedAt: startedRaw ? Number(startedRaw) : 0 };
 }
-function rememberTeam(team){
-  if (team && TEAMS[team]) localStorage.setItem(REMEMBERED_TEAM_KEY, team);
+function rememberedTeam(){
+  return rememberedTeamRecord()?.team || null;
+}
+function rememberTeam(team, startedAt){
+  if (!team || !TEAMS[team]) return;
+  localStorage.setItem(REMEMBERED_TEAM_KEY, team);
+  localStorage.setItem(REMEMBERED_TEAM_STARTED_KEY, String(Number(startedAt) || 0));
+}
+function clearRememberedTeam(team){
+  const saved = localStorage.getItem(REMEMBERED_TEAM_KEY);
+  if (!team || saved === team){
+    localStorage.removeItem(REMEMBERED_TEAM_KEY);
+    localStorage.removeItem(REMEMBERED_TEAM_STARTED_KEY);
+  }
+}
+function releaseTeamSelection(message){
+  clearRememberedTeam();
+  teamKey = null;
+  state = null;
+  stopCamera();
+  hideAdminOverlay();
+  hideAdminPanel();
+  hideVictoryOverlay();
+  if (el("teamGate")) el("teamGate").classList.remove("hidden");
+  renderGateTeams(null);
+  setGateNameLock(false, "");
+  if (el("gateTeamName")) el("gateTeamName").value = "";
+  if (message) setFeedback(message);
 }
 function clueStatusForTeam(team){
   const progress = liveProgressCache[team] || loadLocalState(team);
@@ -416,7 +445,15 @@ function subscribeTeamProgress(){
         liveProgressCache[row.team_id] = normalized;
         localStorage.setItem(storageKey(row.team_id), JSON.stringify(normalized));
 
-        if (teamKey === row.team_id){
+        const remembered = rememberedTeamRecord();
+        const startedChanged = remembered && remembered.team === row.team_id
+          && Number(remembered.startedAt || 0) > 0
+          && Number(normalized.startedAt || 0) > 0
+          && Number(remembered.startedAt) !== Number(normalized.startedAt);
+
+        if (startedChanged){
+          releaseTeamSelection("That team was reset. Pick a team to join again.");
+        } else if (teamKey === row.team_id){
           const incomingTs = toMillis(normalized.lastUpdatedAt);
           const currentTs = toMillis(state?.lastUpdatedAt);
           if (!state || incomingTs >= currentTs){
@@ -1221,6 +1258,8 @@ async function adminSaveTeamName(){
 async function adminResetTeam(){
   const team = el("adminTeamSelect").value;
   const fresh = defaultState(TEAMS[team].label);
+  fresh.startedAt = Date.now();
+  fresh.lastUpdatedAt = fresh.startedAt;
   liveProgressCache[team] = { ...fresh };
   localStorage.setItem(storageKey(team), JSON.stringify(fresh));
 
@@ -1253,16 +1292,15 @@ async function adminResetTeam(){
     liveBoardCache[team] = { team_id: team, team_name: fresh.teamName, found: 0, finished: false, last_updated_at: fresh.lastUpdatedAt };
   }
 
-  if (teamKey === team){
-    state = fresh;
-    await renderAll({ persist: false });
+  if (rememberedTeam() === team){
+    releaseTeamSelection("That team was reset. Pick a team to join again.");
   } else {
     renderBoard();
   }
 
   await syncAdminFields();
   maybeRefreshGateSelection();
-  el("adminPanelFeedback").textContent = supabaseReady ? "Selected team reset everywhere." : "Selected team reset on this device only.";
+  el("adminPanelFeedback").textContent = supabaseReady ? "Selected team reset everywhere and cleared from remembered devices." : "Selected team reset on this device only.";
 }
 
 
@@ -1357,8 +1395,7 @@ async function adminResetAll(){
   const nowTs = Date.now();
   const boardReset = {};
   for (const [team, meta] of Object.entries(TEAMS)) {
-    const existing = liveProgressCache[team] || loadLocalState(team) || defaultState(meta.label);
-    const fresh = defaultState(existing.teamName || meta.label);
+    const fresh = defaultState(meta.label);
     fresh.startedAt = nowTs;
     fresh.lastUpdatedAt = nowTs;
     localStorage.setItem(storageKey(team), JSON.stringify(fresh));
@@ -1376,9 +1413,8 @@ async function adminResetAll(){
   localStorage.setItem(leaderboardKey(), JSON.stringify(boardReset));
   setLocalMapEnabled(true);
   if (supabaseReady) await pushSharedSettings();
-  if (teamKey && TEAMS[teamKey]) state = loadLocalState(teamKey);
-  await renderAll({ persist: false });
-  if (el("adminPanelFeedback")) el("adminPanelFeedback").textContent = "Full game reset for every team.";
+  releaseTeamSelection("The full game was reset. Pick a team to join again.");
+  if (el("adminPanelFeedback")) el("adminPanelFeedback").textContent = "Full game reset for every team and remembered team choices were cleared.";
 }
 
 async function adminToggleMap(){
@@ -1428,8 +1464,7 @@ function wireAdminTrigger(node){
 
 function wireAdminEvents(){
   wireAdminTrigger(el("rabbitTrigger"));
-  wireAdminTrigger(el("adminOpenBtn"));
-  wireAdminTrigger(el("gateAdminBtn"));
+  wireAdminTrigger(el("gateRabbitTrigger"));
 
   if (el("adminCloseX")) el("adminCloseX").addEventListener("click", hideAdminOverlay);
   if (el("adminPanelCloseX")) el("adminPanelCloseX").addEventListener("click", hideAdminPanel);
@@ -1510,8 +1545,9 @@ if (el("startGameBtn")) {
     if (remote) loaded = remote;
     state = loaded;
     state.teamName = claimedName || enteredName || state.teamName || TEAMS[teamKey].label;
-    rememberTeam(teamKey);
+    if (!state.startedAt) state.startedAt = Date.now();
     if (!state.lastUpdatedAt) state.lastUpdatedAt = Date.now();
+    rememberTeam(teamKey, state.startedAt);
     el("teamGate").classList.add("hidden");
     await renderAll();
   });
@@ -1536,15 +1572,24 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("beforeunload", stopCamera);
 
 async function autoResumeRememberedTeam(){
-  const saved = rememberedTeam();
-  if (!saved) return false;
-  teamKey = saved;
+  const remembered = rememberedTeamRecord();
+  if (!remembered) return false;
+  const saved = remembered.team;
   const remote = await loadRemoteProgress(saved);
+  if (remote && Number(remembered.startedAt || 0) > 0 && Number(remote.startedAt || 0) > 0 && Number(remembered.startedAt) !== Number(remote.startedAt)) {
+    clearRememberedTeam(saved);
+    renderGateTeams(null);
+    setGateNameLock(false, "");
+    return false;
+  }
+  teamKey = saved;
   state = remote || loadLocalState(saved);
+  if (!state.startedAt) state.startedAt = Date.now();
   if (!state.lastUpdatedAt) state.lastUpdatedAt = Date.now();
   renderGateTeams(saved);
   setGateNameLock(true, state.teamName || TEAMS[saved].label);
   if (el("teamGate")) el("teamGate").classList.add("hidden");
+  rememberTeam(saved, state.startedAt);
   await renderAll();
   return true;
 }

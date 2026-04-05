@@ -9,6 +9,7 @@
 <body>
   <div id="teamGate" class="overlay">
     <div class="gateCard">
+      <button type="button" id="gateRabbitTrigger" class="gateRabbitBtn" aria-label="Admin access">🐰</button>
       <div class="badge bigBadge">🐣 Pick your team</div>
       <h1 class="gateTitle">Welcome to the Sig Tau Easter Treasure Hunt</h1>
       <p class="gateCopy">Choose your team and start the hunt. This device will remember your team after the first join.</p>
@@ -17,8 +18,6 @@
       <input id="gateTeamName" placeholder="Enter team name">
       <div class="spacer"></div>
       <button class="primary full" id="startGameBtn">Start hunt</button>
-      <div class="spacer"></div>
-      <button class="full" id="gateAdminBtn">Admin view</button>
     </div>
   </div>
 
@@ -37,7 +36,7 @@
   </div>
 
   <div id="adminPanel" class="overlay hidden">
-    <div class="gateCard">
+    <div class="gateCard adminPanelCard">
       <button id="adminPanelCloseX" class="adminCloseX" aria-label="Close">×</button>
       <div class="badge bigBadge">🛠️ Admin tools</div>
       <h1 class="gateTitle">Manage teams</h1>
@@ -78,7 +77,6 @@
     <div class="topbarInner">
       <div class="brand"><button type="button" id="rabbitTrigger" class="rabbitBtn" aria-label="Admin access">🐰</button><span>Sig Tau Easter Treasure Hunt</span></div>
       <nav class="menu">
-        <button class="menuBtn" id="adminOpenBtn" type="button">Admin</button>
         <button class="menuBtn active" data-page="choresPage">Chores</button>
         <button class="menuBtn" data-page="scanPage">Scanner</button>
         <button class="menuBtn" data-page="mapPage">Map & Leaderboard</button>
