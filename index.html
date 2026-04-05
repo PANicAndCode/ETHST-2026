@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sig Tau Easter Treasure Hunt</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="teamGate" class="overlay">
+    <div class="gateCard">
+      <div class="badge bigBadge">🐣 Pick your team</div>
+      <h1 class="gateTitle">Welcome to the Sig Tau Easter Treasure Hunt</h1>
+      <p class="gateCopy">Choose your team and start the hunt. This device will remember your team after the first join.</p>
+      <div class="teamButtons" id="gateTeamButtons"></div>
+      <div class="spacer"></div>
+      <input id="gateTeamName" placeholder="Enter team name">
+      <div class="spacer"></div>
+      <button class="primary full" id="startGameBtn">Start hunt</button>
+      <div class="spacer"></div>
+      <button class="full" id="gateAdminBtn">Admin view</button>
+    </div>
+  </div>
+
+  <div id="adminOverlay" class="overlay hidden">
+    <div class="gateCard adminCard">
+      <button id="adminCloseX" class="adminCloseX" aria-label="Close">×</button>
+      <div class="badge bigBadge">🥚 Admin access</div>
+      <h1 class="gateTitle">Admin controls</h1>
+      <p class="gateCopy">Enter the admin passcode to unlock management tools.</p>
+      <input id="adminPasscode" placeholder="Enter admin passcode">
+      <div class="spacer"></div>
+      <button class="primary full" id="adminUnlockBtn">Unlock admin</button>
+      <div class="spacer"></div>
+      <div class="warn" id="adminFeedback">Admin tools are hidden from players.</div>
+    </div>
+  </div>
+
+  <div id="adminPanel" class="overlay hidden">
+    <div class="gateCard">
+      <button id="adminPanelCloseX" class="adminCloseX" aria-label="Close">×</button>
+      <div class="badge bigBadge">🛠️ Admin tools</div>
+      <h1 class="gateTitle">Manage teams</h1>
+      <p class="gateCopy">These controls are hidden from players.</p>
+      <div class="adminStatusBlock">
+        <h2 class="adminStatusTitle">Team status</h2>
+        <div id="adminStatusList" class="adminStatusList"></div>
+      </div>
+      <div class="panel">
+        <select id="adminTeamSelect"></select>
+        <input id="adminTeamName" placeholder="Admin set team name">
+        <button class="primary full" id="adminSaveNameBtn">Save team name</button>
+        <button class="full" id="adminReloadTeamBtn">Reload team progress</button>
+        <button class="primary full" id="adminGrantNextBtn">Grant next clue</button>
+        <button class="full" id="adminToggleMapBtn">Turn map off for everyone</button>
+        <button class="full" id="adminResetTeamBtn">Reset selected team</button>
+        <button class="full dangerBtn" id="adminResetAllBtn">Reset full game</button>
+      </div>
+      <div class="spacer"></div>
+      <div class="note" id="adminPanelFeedback">Choose a team to manage.</div>
+    </div>
+  </div>
+
+  <div id="victoryOverlay" class="overlay hidden">
+    <div class="gateCard victoryCard">
+      <button id="victoryCloseX" class="adminCloseX" aria-label="Close">×</button>
+      <div class="badge bigBadge">🏆 Victory!</div>
+      <h1 class="gateTitle" id="victoryTitle">You finished the hunt!</h1>
+      <p class="gateCopy" id="victoryPlacement">Your team came in first place.</p>
+      <div class="victoryRank" id="victoryRankWord">First place</div>
+      <div class="victoryMeta" id="victoryMeta">The leaderboard has been updated.</div>
+      <div class="spacer"></div>
+      <button class="primary full" id="victoryLeaderboardBtn">View leaderboard</button>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="topbarInner">
+      <div class="brand"><button type="button" id="rabbitTrigger" class="rabbitBtn" aria-label="Admin access">🐰</button><span>Sig Tau Easter Treasure Hunt</span></div>
+      <nav class="menu">
+        <button class="menuBtn" id="adminOpenBtn" type="button">Admin</button>
+        <button class="menuBtn active" data-page="choresPage">Chores</button>
+        <button class="menuBtn" data-page="scanPage">Scanner</button>
+        <button class="menuBtn" data-page="mapPage">Map & Leaderboard</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero card">
+      <div class="badge">🥚 Sig Tau Easter Treasure Hunt</div>
+      <h1>Follow the clues before the other teams and find the final egg.</h1>
+      <p>Each QR code unlocks only the next clue for your team. This device will remember your team automatically after you join once.</p>
+      <div class="kpis">
+        <div class="kpi kpiGreen">
+          <div class="small">Progress</div>
+          <strong id="progressCount">0 / 10</strong>
+          <div class="progress"><div id="progressBar" style="width:0%"></div></div>
+        </div>
+        <div class="kpi kpiAmber">
+          <div class="small">Hints used</div>
+          <strong id="hintCount">0 / 3</strong>
+          <div class="muted" id="hintStatus">Hint ready</div>
+        </div>
+      </div>
+      <div id="finalEggCard" class="finalEggCard hidden">
+        <div>
+          <div class="badge finalEggBadge" id="finalEggBadge">🏁 Final egg ready</div>
+          <h2 id="finalEggTitle">Find the last egg!</h2>
+          <p id="finalEggCopy">After your 10th QR code, the final clue will appear here.</p>
+        </div>
+        <div class="finalEggActions">
+          <button class="primary finalEggBtn hidden" id="claimVictoryBtn">I found the final egg!</button>
+          <button class="finalEggBtn hidden" id="viewVictoryBtn">View victory page</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="choresPage" class="page activePage">
+      <div class="mainGrid" id="mapPageGrid">
+        <div class="card" id="mapCard">
+          <div class="sectionTitleRow">
+            <h2>Sig Tau clue list</h2>
+            <div class="teamPill" id="teamDisplay"></div>
+          </div>
+          <p>Locations stay hidden for the current clue. Completed clues reveal where that stop was found.</p>
+          <div class="list" id="choreList"></div>
+        </div>
+        <div class="sideCol">
+          <div class="card panel hidden" id="hintStationCard">
+            <div class="sectionTitleRow">
+              <h2>Hint station</h2>
+              <div class="hintActionRow">
+                <button class="amber" id="hintBtn">Use hint</button>
+                <span class="timerPill" id="hintTimerPill" hidden>10:00</span>
+              </div>
+            </div>
+            <div class="small" id="hintsLeft">Hints left: 3</div>
+            <div class="warn" id="hintBox">No hint displayed yet for this active clue.</div>
+          </div>
+          <div class="note" id="feedbackBox">Ready to play.</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="scanPage" class="page">
+      <div class="scanWrap">
+        <div class="card panel scanCard">
+          <h2>Check next egg</h2>
+          <div class="muted" id="scanMessage">Line up the QR code in the camera and take a picture.</div>
+          <div class="cameraActions">
+            <button id="takePhotoBtn" type="button">Take picture</button>
+            <button id="retakePhotoBtn" type="button">Retake</button>
+          </div>
+          <div class="muted cameraNote" id="cameraNote">Best results: fill most of the frame with the QR code and avoid glare.</div>
+          <div class="photoBox">
+            <div id="qr-reader" class="qrReader photoReader">
+              <video id="qrVideo" class="previewVideo" playsinline autoplay muted></video>
+              <canvas id="qrCanvas" class="previewCanvas hidden"></canvas>
+              <div class="photoPlaceholder" id="photoPlaceholder">Camera will start automatically on this page.</div>
+            </div>
+          </div>
+          <div id="scanStatusBox" class="scanStatus scanStatusIdle">Camera will open automatically.</div>
+          <input id="manualCode" placeholder="Paste or type QR code value">
+          <button class="primary" id="unlockBtn">Check code</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="mapPage" class="page">
+      <div class="mainGrid" id="mapPageGrid">
+        <div class="card" id="mapCard">
+          <h2>Map view</h2>
+          <p>Completed stops appear on the map after they are found.</p>
+          <div class="mapWrap">
+            <img src="property-map.png" alt="Property map">
+            <div id="mapPins"></div>
+          </div>
+        </div>
+        <div class="card panel">
+          <h2>Leaderboard</h2>
+          <div id="leaderboardModeText" class="leaderStatus" hidden></div>
+          <div id="sharedModeText" class="leaderStatus" hidden></div>
+          <div class="leader" id="leaderboard"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="supabase-config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
