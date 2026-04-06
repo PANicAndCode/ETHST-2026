@@ -80,6 +80,11 @@ function hintStats(targetState = state){
   return { usedRaw, usedDisplay, total, remaining };
 }
 
+function revealedHintForClue(targetState = state, team = teamKey){
+  const activeId = currentClueId(targetState, team);
+  return !!(activeId && targetState && Number(targetState.revealedHintClueId) === Number(activeId));
+}
+
 function currentClueId(targetState = state, team = teamKey){
   return team && targetState ? TEAMS[team]?.sequence?.[targetState.progressIndex] : null;
 }
@@ -155,6 +160,7 @@ function defaultState(teamLabel){
     scannedTokens: [],
     usedHints: 0,
     nextHintAt: null,
+    revealedHintClueId: null,
     finished: false,
     startedAt: Date.now(),
     lastUpdatedAt: Date.now()
@@ -172,7 +178,9 @@ function readJson(key, fallback){
 }
 
 function loadLocalState(team){
-  return readJson(storageKey(team), defaultState(TEAMS[team].label));
+  const saved = readJson(storageKey(team), defaultState(TEAMS[team].label));
+  if (saved && typeof saved.revealedHintClueId === "undefined") saved.revealedHintClueId = null;
+  return saved;
 }
 
 function saveLocalState(){
@@ -327,6 +335,7 @@ function normalizeRemoteProgress(data){
     finished: !!data.finished,
     startedAt: data.started_at,
     lastUpdatedAt: data.last_updated_at,
+    revealedHintClueId: data.revealed_hint_clue_id ?? null,
     mapEnabled: typeof data.map_enabled === "boolean" ? data.map_enabled : undefined
   };
 }
@@ -425,6 +434,10 @@ async function fetchAllRemoteProgress(){
   liveProgressCache = {};
   (data || []).forEach(row => {
     const normalized = normalizeRemoteProgress(row);
+    const local = loadLocalState(row.team_id);
+    if (local && Number(local.startedAt || 0) === Number(normalized.startedAt || 0) && Number(local.progressIndex || 0) === Number(normalized.progressIndex || 0) && local.revealedHintClueId != null && normalized.revealedHintClueId == null) {
+      normalized.revealedHintClueId = local.revealedHintClueId;
+    }
     liveProgressCache[row.team_id] = normalized;
     localStorage.setItem(storageKey(row.team_id), JSON.stringify(normalized));
   });
@@ -460,6 +473,10 @@ function subscribeTeamProgress(){
         localStorage.removeItem(storageKey(row.team_id));
       } else {
         const normalized = normalizeRemoteProgress(row);
+        const local = loadLocalState(row.team_id);
+        if (local && Number(local.startedAt || 0) === Number(normalized.startedAt || 0) && Number(local.progressIndex || 0) === Number(normalized.progressIndex || 0) && local.revealedHintClueId != null && normalized.revealedHintClueId == null) {
+          normalized.revealedHintClueId = local.revealedHintClueId;
+        }
         liveProgressCache[row.team_id] = normalized;
         localStorage.setItem(storageKey(row.team_id), JSON.stringify(normalized));
 
@@ -500,6 +517,10 @@ async function loadRemoteProgress(team){
   }
   const normalized = normalizeRemoteProgress(data);
   if (normalized) {
+    const local = loadLocalState(team);
+    if (local && Number(local.startedAt || 0) === Number(normalized.startedAt || 0) && Number(local.progressIndex || 0) === Number(normalized.progressIndex || 0) && local.revealedHintClueId != null && normalized.revealedHintClueId == null) {
+      normalized.revealedHintClueId = local.revealedHintClueId;
+    }
     liveProgressCache[team] = normalized;
     localStorage.setItem(storageKey(team), JSON.stringify(normalized));
   }
@@ -658,11 +679,12 @@ function renderHint(){
   const stats = hintStats(state);
   const canHint = clueAllowsHint(activeId);
   const locked = canHint && state.nextHintAt && now < toMillis(state.nextHintAt);
-  el("hintBtn").disabled = !canHint || stats.remaining <= 0 || locked || !clue;
+  const showingHint = revealedHintForClue(state, teamKey);
+  el("hintBtn").disabled = !canHint || stats.remaining <= 0 || locked || !clue || showingHint;
   el("hintsLeft").textContent = canHint ? `Hints left: ${stats.remaining}` : "Hints are disabled for this clue.";
   el("hintBox").textContent = !clue
     ? "No active clue."
-    : (!canHint ? (clue.hint || "Hints are disabled for this clue.") : (stats.usedDisplay > 0 ? clue.hint : "No hint displayed yet for this active clue."));
+    : (!canHint ? (clue.hint || "Hints are disabled for this clue.") : (showingHint ? clue.hint : "No hint displayed yet for this active clue."));
   if (locked){
     el("hintTimerPill").hidden = false;
     el("hintTimerPill").textContent = fmtCountdown(toMillis(state.nextHintAt) - now);
@@ -746,6 +768,7 @@ function applyProgressAdvance(team, targetState, scannedValue){
   targetState.completed.push(finishedStep);
   targetState.scannedTokens.push(scannedValue || expected);
   targetState.progressIndex += 1;
+  targetState.revealedHintClueId = null;
   targetState.lastUpdatedAt = Date.now();
 
   if (isOnFinalClue(targetState, team)) {
@@ -1662,6 +1685,7 @@ if (el("hintBtn")) {
     const locked = clueAllowsHint(activeId) && state.nextHintAt && now < toMillis(state.nextHintAt);
     if (!clueAllowsHint(activeId) || stats.remaining <= 0 || locked) return;
     state.usedHints += 1;
+    state.revealedHintClueId = activeId;
     state.nextHintAt = hintStats(state).remaining <= 0 ? null : Date.now() + COOLDOWN_MINUTES * 60 * 1000;
     state.lastUpdatedAt = Date.now();
     await renderAll();
