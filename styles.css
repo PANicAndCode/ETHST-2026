@@ -131,3 +131,57 @@ input,select{border:1px solid #e4d5c4;width:100%;background:white}
 #adminPanel{align-items:flex-start;overflow-y:auto}
 .adminPanelCard{margin:18px auto;max-height:none}
 .overlay{overflow-y:auto}
+
+
+:root {
+  --theme-rabbit: #ff8fb1;
+  --theme-knight: #8fa4ff;
+  --theme-raven: #7d8ea3;
+  --theme-wolf: #a27dff;
+  --theme-fox: #ff9f68;
+  --theme-cobra: #48b78b;
+}
+body.finalMissionMode{
+  background:
+    radial-gradient(circle at top left, rgba(255,213,79,.18), transparent 30%),
+    radial-gradient(circle at top right, rgba(143,164,255,.18), transparent 26%),
+    linear-gradient(180deg,#fffaf0,#fff2dc 48%,#fff7ef);
+}
+.gateIdentityGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mascotPreviewCard{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:20px;border:1px solid var(--line);background:#fffaf5}
+.mascotPreviewEmoji{font-size:28px;line-height:1}
+.mascotBadge,.teamThemePill{display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border-radius:999px;border:1px solid var(--line);font-weight:700;font-size:13px;white-space:nowrap}
+.mascot-rabbit{background:#fff0f5;border-color:#ffc7d8;color:#9f315d}
+.mascot-knight{background:#eef1ff;border-color:#cad3ff;color:#384b9b}
+.mascot-raven{background:#eef4f9;border-color:#c7d5e2;color:#46586c}
+.mascot-wolf{background:#f4efff;border-color:#d8c8ff;color:#6c45af}
+.mascot-fox{background:#fff1e8;border-color:#ffd0b2;color:#a24d14}
+.mascot-cobra{background:#eafaf4;border-color:#bfead6;color:#0d7650}
+.teamPill{background:white}
+.leadBanner{padding:12px 14px;border-radius:18px;background:linear-gradient(180deg,#fff8ea,#fff2d3);border:1px solid #ffd79f;color:#8a5700;font-weight:700}
+.leaderRow{align-items:flex-start;transition:transform .15s ease, box-shadow .15s ease}
+.leaderRow:hover{transform:translateY(-1px);box-shadow:0 10px 20px rgba(121,79,50,.08)}
+.leaderSubline{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:4px}
+.leaderMiniMeta{font-size:12px;color:var(--muted)}
+.candyBadge{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:#fffaf0;border:1px solid #ffe0a8;font-size:12px;font-weight:700;color:#8a5700}
+#feedbackBox{font-weight:700}
+.eggProgress{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.eggDot{width:18px;height:22px;border-radius:50% 50% 48% 48%;background:#f0e3d1;border:1px solid #e2d0b8;display:inline-block;position:relative;transform:rotate(12deg)}
+.eggDot::after{content:"";position:absolute;left:4px;top:4px;width:4px;height:6px;border-radius:50%;background:rgba(255,255,255,.55)}
+.eggDot.complete{background:linear-gradient(180deg,#59ce8b,#2fa866);border-color:#28945a}
+.eggDot.current{background:linear-gradient(180deg,#ffd776,#f59a23);border-color:#db830f}
+.missionCard{max-width:560px;text-align:center}
+.missionMeta{padding:12px 14px;border-radius:18px;background:#eef9ff;border:1px solid #bfeaff;color:#17506a;font-weight:600}
+.burstEmoji{position:fixed;left:50%;top:50%;font-size:28px;pointer-events:none;z-index:100;animation:burstFly 1s ease-out forwards}
+@keyframes burstFly{
+  0%{transform:translate(-50%,-50%) scale(.4);opacity:0}
+  12%{opacity:1}
+  100%{transform:translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.15);opacity:0}
+}
+.adminStatusRow .leaderSubline{margin-top:6px}
+.adminStatusLocation{font-size:13px;color:var(--muted)}
+.finalEggCard.finalMissionGlow{background:linear-gradient(180deg,#fff8e2,#ffefbd);border-color:#f7cf63;box-shadow:0 18px 34px rgba(245,154,35,.18)}
+.victoryCard{background:linear-gradient(180deg,#fffdf8,#fff6db)}
+@media (max-width: 700px){
+  .gateIdentityGrid{grid-template-columns:1fr}
+}

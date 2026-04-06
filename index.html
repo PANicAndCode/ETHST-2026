@@ -12,10 +12,21 @@
       <button type="button" id="gateRabbitTrigger" class="gateRabbitBtn" aria-label="Admin access">🐰</button>
       <div class="badge bigBadge">🐣 Pick your team</div>
       <h1 class="gateTitle">Welcome to the Sig Tau Easter Treasure Hunt</h1>
-      <p class="gateCopy">Choose your team and start the hunt. This device will remember your team after the first join.</p>
+      <p class="gateCopy">Choose your team, claim a mascot, and start the race. This device will remember your team after the first join.</p>
       <div class="teamButtons" id="gateTeamButtons"></div>
       <div class="spacer"></div>
-      <input id="gateTeamName" placeholder="Enter team name">
+      <div class="gateIdentityGrid">
+        <div>
+          <label class="small" for="gateTeamName">Team name</label>
+          <input id="gateTeamName" placeholder="Enter team name">
+        </div>
+        <div>
+          <label class="small" for="gateMascotSelect">Mascot</label>
+          <select id="gateMascotSelect"></select>
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <div id="gateMascotPreview" class="mascotPreviewCard"></div>
       <div class="spacer"></div>
       <button class="primary full" id="startGameBtn">Start hunt</button>
     </div>
@@ -62,6 +73,18 @@
     </div>
   </div>
 
+  <div id="missionOverlay" class="overlay hidden">
+    <div class="gateCard missionCard">
+      <button id="missionCloseX" class="adminCloseX" aria-label="Close">×</button>
+      <div class="badge" id="missionBadge">✅ Mission update</div>
+      <h1 class="gateTitle" id="missionTitle">Mission unlocked</h1>
+      <p class="gateCopy" id="missionCopy">You cracked the QR and unlocked your next stop.</p>
+      <div class="missionMeta" id="missionMeta">Head back to the mission board for your next riddle.</div>
+      <div class="spacer"></div>
+      <button class="primary full" id="missionActionBtn">Keep hunting</button>
+    </div>
+  </div>
+
   <div id="victoryOverlay" class="overlay hidden">
     <div class="gateCard victoryCard">
       <button id="victoryCloseX" class="adminCloseX" aria-label="Close">×</button>
@@ -71,7 +94,7 @@
       <div class="victoryRank" id="victoryRankWord">First place</div>
       <div class="victoryMeta" id="victoryMeta">The leaderboard has been updated.</div>
       <div class="spacer"></div>
-      <button class="primary full" id="victoryLeaderboardBtn">View leaderboard</button>
+      <button class="primary full" id="victoryLeaderboardBtn">View standings</button>
     </div>
   </div>
 
@@ -79,9 +102,9 @@
     <div class="topbarInner">
       <div class="brand"><button type="button" id="rabbitTrigger" class="rabbitBtn" aria-label="Admin access">🐰</button><span>Sig Tau Easter Treasure Hunt</span></div>
       <nav class="menu">
-        <button class="menuBtn active" data-page="choresPage">Chores</button>
+        <button class="menuBtn active" data-page="choresPage">Mission board</button>
         <button class="menuBtn" data-page="scanPage">Scanner</button>
-        <button class="menuBtn" data-page="mapPage">Map & Leaderboard</button>
+        <button class="menuBtn" data-page="mapPage">Standings & map</button>
       </nav>
     </div>
   </header>
@@ -89,13 +112,14 @@
   <main class="container">
     <section class="hero card">
       <div class="badge">🥚 Sig Tau Easter Treasure Hunt</div>
-      <h1>Follow the clues before the other teams and find the final egg.</h1>
-      <p>Each QR code unlocks only the next clue for your team. This device will remember your team automatically after you join once.</p>
+      <h1>Solve the house, beat the other teams, and claim the candy.</h1>
+      <p>Each QR code unlocks only the next clue for your team. This device remembers your team automatically after you join once, so you can jump straight back into the race.</p>
       <div class="kpis">
         <div class="kpi kpiGreen">
           <div class="small">Progress</div>
           <strong id="progressCount">0 / 10</strong>
           <div class="progress"><div id="progressBar" style="width:0%"></div></div>
+          <div id="eggProgress" class="eggProgress" aria-hidden="true"></div>
         </div>
         <div class="kpi kpiAmber">
           <div class="small">Hints used</div>
@@ -120,23 +144,23 @@
       <div class="mainGrid" id="mapPageGrid">
         <div class="card" id="mapCard">
           <div class="sectionTitleRow">
-            <h2>Sig Tau clue list</h2>
+            <h2>Mission board</h2>
             <div class="teamPill" id="teamDisplay"></div>
           </div>
-          <p>Locations stay hidden for the current clue. Completed clues reveal where that stop was found.</p>
+          <p>The house is hiding the next step. Solve each mission, crack the QR, and keep moving before another team catches up.</p>
           <div class="list" id="choreList"></div>
         </div>
         <div class="sideCol">
           <div class="card panel" id="hintStationCard">
             <div class="sectionTitleRow">
-              <h2>Hint station</h2>
+              <h2>Backup</h2>
               <div class="hintActionRow">
                 <button class="amber" id="hintBtn">Use hint</button>
                 <span class="timerPill" id="hintTimerPill" hidden>10:00</span>
               </div>
             </div>
             <div class="small" id="hintsLeft">Hints left: 3</div>
-            <div class="note">Go get a challenge from Jillian for an extra hint or to skip the hint timer.</div>
+            <div class="note">Go get a challenge from Jillian for an extra hint or to skip the hint timer. Jillian’s favor board can bail you out when the house gets weird.</div>
             <div class="warn" id="hintBox">No hint displayed yet for this active clue.</div>
           </div>
           <div class="note" id="feedbackBox">Ready to play.</div>
@@ -147,7 +171,7 @@
     <section id="scanPage" class="page">
       <div class="scanWrap">
         <div class="card panel scanCard">
-          <h2>Check next egg</h2>
+          <h2>Checkpoint scanner</h2>
           <div class="muted" id="scanMessage">Line up the QR code in the camera and take a picture.</div>
           <div class="cameraActions">
             <button id="takePhotoBtn" type="button">Take picture</button>
@@ -179,7 +203,8 @@
           </div>
         </div>
         <div class="card panel">
-          <h2>Leaderboard</h2>
+          <h2>Standings</h2>
+          <div id="leadBanner" class="leadBanner">The race is on.</div>
           <div id="leaderboardModeText" class="leaderStatus" hidden></div>
           <div id="sharedModeText" class="leaderStatus" hidden></div>
           <div class="leader" id="leaderboard"></div>

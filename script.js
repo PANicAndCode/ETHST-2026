@@ -4,6 +4,16 @@ const STORAGE_PREFIX = "sigtau-easter-hunt-v1";
 const REMEMBERED_TEAM_KEY = `${STORAGE_PREFIX}-remembered-team`;
 const REMEMBERED_TEAM_STARTED_KEY = `${STORAGE_PREFIX}-remembered-team-started`;
 const ADMIN_PASSCODE = "bunnyboss";
+const TEAM_IDENTITY_SEPARATOR = "|||";
+const DEFAULT_MASCOT = "rabbit";
+const MASCOTS = {
+  rabbit: { label: "Rabbits", emoji: "🐰", badgeClass: "mascot-rabbit" },
+  knight: { label: "Knights", emoji: "🛡️", badgeClass: "mascot-knight" },
+  raven: { label: "Ravens", emoji: "🪶", badgeClass: "mascot-raven" },
+  wolf: { label: "Wolves", emoji: "🐺", badgeClass: "mascot-wolf" },
+  fox: { label: "Foxes", emoji: "🦊", badgeClass: "mascot-fox" },
+  cobra: { label: "Cobras", emoji: "🐍", badgeClass: "mascot-cobra" }
+};
 const MAP_ENABLED_KEY = `${STORAGE_PREFIX}-map-enabled`;
 const SHARED_SETTINGS_TEAM_ID = "__settings__";
 
@@ -51,8 +61,11 @@ function releaseTeamSelection(message){
   hideAdminOverlay();
   hideAdminPanel();
   hideVictoryOverlay();
+  hideMissionOverlay();
+  applyTeamTheme(encodeTeamIdentity("Sig Tau", DEFAULT_MASCOT, "Sig Tau"), null);
   if (el("teamGate")) el("teamGate").classList.remove("hidden");
   renderGateTeams(null);
+  populateMascotOptions();
   setGateNameLock(false, "");
   if (el("gateTeamName")) el("gateTeamName").value = "";
   if (message) setFeedback(message);
@@ -94,6 +107,184 @@ function clueAllowsHint(clueId){
   return !!(clue && clue.hint && !clue.noHint);
 }
 
+
+
+function escapeHtml(value){
+  return String(value ?? "").replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[char]));
+}
+
+function normalizeMascotKey(key){
+  return MASCOTS[key] ? key : DEFAULT_MASCOT;
+}
+
+function mascotMeta(key){
+  return MASCOTS[normalizeMascotKey(key)];
+}
+
+function encodeTeamIdentity(displayName, mascotKey = DEFAULT_MASCOT, fallbackName = "Team"){
+  const cleanName = (displayName || fallbackName || "Team").trim() || fallbackName || "Team";
+  return `${cleanName}${TEAM_IDENTITY_SEPARATOR}${normalizeMascotKey(mascotKey)}`;
+}
+
+function parseTeamIdentity(rawValue, fallbackName = "Team"){
+  const fallback = (fallbackName || "Team").trim() || "Team";
+  if (!rawValue || typeof rawValue !== "string") {
+    const mascot = mascotMeta(DEFAULT_MASCOT);
+    return { raw: encodeTeamIdentity(fallback, DEFAULT_MASCOT, fallback), displayName: fallback, mascotKey: DEFAULT_MASCOT, mascot };
+  }
+  const pieces = rawValue.split(TEAM_IDENTITY_SEPARATOR);
+  const displayName = (pieces[0] || fallback).trim() || fallback;
+  const mascotKey = normalizeMascotKey((pieces[1] || "").trim());
+  const mascot = mascotMeta(mascotKey);
+  return { raw: encodeTeamIdentity(displayName, mascotKey, fallback), displayName, mascotKey, mascot };
+}
+
+function teamIdentity(rawValue, team = teamKey){
+  const fallback = team && TEAMS[team] ? TEAMS[team].label : "Team";
+  return parseTeamIdentity(rawValue, fallback);
+}
+
+
+function hasTeamBeenClaimed(progress, team){
+  if (!progress) return false;
+  const joined = Number(progress.startedAt || 0) > 0 || Number(progress.progressIndex || 0) > 0 || (Array.isArray(progress.completed) && progress.completed.length > 0) || !!progress.finished;
+  const identity = teamIdentity(progress.teamName, team);
+  return joined || identity.displayName !== TEAMS[team].label || identity.mascotKey !== DEFAULT_MASCOT;
+}
+
+function mascotBadgeMarkup(identity, opts = {}){
+  if (!identity) return "";
+  const showLabel = !!opts.showLabel;
+  const label = showLabel ? ` ${escapeHtml(identity.mascot.label)}` : "";
+  return `<span class="mascotBadge ${identity.mascot.badgeClass}">${identity.mascot.emoji}${label}</span>`;
+}
+
+function teamThemeClass(rawValue, team = teamKey){
+  return teamIdentity(rawValue, team).mascot.badgeClass;
+}
+
+function applyTeamTheme(rawValue, team = teamKey){
+  const body = document.body;
+  if (!body) return;
+  Object.values(MASCOTS).forEach(meta => body.classList.remove(meta.badgeClass));
+  body.classList.add(teamThemeClass(rawValue, team));
+}
+
+function updateMascotPreview(selected){
+  const preview = el("gateMascotPreview");
+  if (!preview) return;
+  const mascot = mascotMeta(selected);
+  preview.className = `mascotPreviewCard ${mascot.badgeClass}`;
+  preview.innerHTML = `<span class="mascotPreviewEmoji">${mascot.emoji}</span><div><strong>${escapeHtml(mascot.label)}</strong><div class="small">This mascot becomes your team badge and color theme.</div></div>`;
+}
+
+function setTeamIdentityInputs(rawValue, locked){
+  const hasTeam = !!(teamKey && TEAMS[teamKey]);
+  const identity = parseTeamIdentity(rawValue, hasTeam ? TEAMS[teamKey].label : "");
+  const input = el("gateTeamName");
+  const select = el("gateMascotSelect");
+  if (input){
+    const displayName = !hasTeam ? "" : (identity.displayName === TEAMS[teamKey]?.label ? "" : identity.displayName);
+    input.value = locked ? identity.displayName : displayName;
+    input.readOnly = !!locked;
+    input.disabled = !!locked;
+    input.placeholder = locked ? "Team name already locked" : "Enter team name";
+  }
+  if (select){
+    select.value = identity.mascotKey;
+    select.disabled = !!locked;
+  }
+  updateMascotPreview(identity.mascotKey);
+}
+
+function currentGateIdentityRaw(){
+  const select = el("gateMascotSelect");
+  const input = el("gateTeamName");
+  const mascotKey = normalizeMascotKey(select?.value || DEFAULT_MASCOT);
+  const baseName = (input?.value || "").trim() || (teamKey && TEAMS[teamKey] ? TEAMS[teamKey].label : "Team");
+  return encodeTeamIdentity(baseName, mascotKey, teamKey && TEAMS[teamKey] ? TEAMS[teamKey].label : "Team");
+}
+
+function populateMascotOptions(selected = DEFAULT_MASCOT){
+  const select = el("gateMascotSelect");
+  if (!select) return;
+  if (!select.options.length){
+    Object.entries(MASCOTS).forEach(([key, mascot]) => {
+      const opt = document.createElement("option");
+      opt.value = key;
+      opt.textContent = `${mascot.emoji} ${mascot.label}`;
+      select.appendChild(opt);
+    });
+    select.addEventListener("change", () => updateMascotPreview(select.value));
+  }
+  select.value = normalizeMascotKey(selected);
+  updateMascotPreview(select.value);
+}
+
+function buildEggProgressDots(){
+  const mount = el("eggProgress");
+  if (!mount || !teamKey) return;
+  mount.innerHTML = "";
+  const total = teamTotal();
+  for (let i = 0; i < total; i += 1){
+    const dot = document.createElement("span");
+    dot.className = "eggDot";
+    if (i < state.completed.length) dot.classList.add("complete");
+    else if (i === state.progressIndex && !state.finished) dot.classList.add("current");
+    mount.appendChild(dot);
+  }
+}
+
+function burstCelebration(type = "success"){
+  const emojis = type === "victory" ? ["🍬","🏁","✨","🥚","🎉"] : ["✨","🥚","✅","🐰"];
+  for (let i = 0; i < 12; i += 1){
+    const piece = document.createElement("span");
+    piece.className = "burstEmoji";
+    piece.textContent = emojis[i % emojis.length];
+    piece.style.setProperty("--dx", `${(Math.random() * 320 - 160).toFixed(0)}px`);
+    piece.style.setProperty("--dy", `${(-220 - Math.random() * 180).toFixed(0)}px`);
+    document.body.appendChild(piece);
+    piece.addEventListener("animationend", () => piece.remove(), { once: true });
+  }
+  if (navigator.vibrate) navigator.vibrate(type === "victory" ? [120, 70, 180] : [80, 40, 110]);
+}
+
+function showMissionOverlay({ badge = "✅ Mission update", title = "Mission unlocked", copy = "You unlocked your next clue.", meta = "Head back to the mission board for your next riddle.", page = "choresPage" } = {}){
+  if (el("missionBadge")) el("missionBadge").textContent = badge;
+  if (el("missionTitle")) el("missionTitle").textContent = title;
+  if (el("missionCopy")) el("missionCopy").textContent = copy;
+  if (el("missionMeta")) el("missionMeta").textContent = meta;
+  const btn = el("missionActionBtn");
+  if (btn) btn.onclick = () => {
+    hideMissionOverlay();
+    setPage(page);
+  };
+  const overlay = el("missionOverlay");
+  if (overlay) overlay.classList.remove("hidden");
+}
+
+function hideMissionOverlay(){
+  const overlay = el("missionOverlay");
+  if (overlay) overlay.classList.add("hidden");
+}
+
+function renderLeadBanner(rows = boardRows()){
+  const banner = el("leadBanner");
+  if (!banner) return;
+  const activeRows = rows.filter(row => row.found > 0 || row.finished);
+  if (!activeRows.length){
+    banner.textContent = "The race is on. Crack the first egg and take the lead.";
+    return;
+  }
+  const leader = rows[0];
+  const identity = teamIdentity(leader.teamNameRaw || leader.teamName, leader.key);
+  const suffix = leader.finished ? `${placementPrizeText(1)} goes to Andy.` : `${leader.found} clues solved so far.`;
+  banner.innerHTML = `${mascotBadgeMarkup(identity)} <span><strong>${escapeHtml(identity.displayName)}</strong> is currently in the lead. ${escapeHtml(suffix)}</span>`;
+}
+
+function updateFinalMissionMode(){
+  document.body.classList.toggle("finalMissionMode", !!state && (isOnFinalClue(state, teamKey) || state.finished));
+}
 
 function localMapEnabled(){
   const raw = localStorage.getItem(MAP_ENABLED_KEY);
@@ -154,7 +345,7 @@ function applyMapVisibility(){
 
 function defaultState(teamLabel){
   return {
-    teamName: teamLabel,
+    teamName: encodeTeamIdentity(teamLabel, DEFAULT_MASCOT, teamLabel),
     progressIndex: 0,
     completed: [],
     scannedTokens: [],
@@ -206,25 +397,39 @@ function compareBoardRows(a, b){
     || a.teamName.localeCompare(b.teamName);
 }
 
+function buildBoardRow(key, rawName, found, finished, lastUpdatedAt){
+  const identity = teamIdentity(rawName, key);
+  return {
+    key,
+    teamName: identity.displayName,
+    teamNameRaw: identity.raw,
+    mascotKey: identity.mascotKey,
+    mascot: identity.mascot,
+    found,
+    finished,
+    lastUpdatedAt
+  };
+}
+
 function localBoardRows(){
   const board = readJson(leaderboardKey(), {});
-  return Object.entries(TEAMS).map(([key, t]) => ({
+  return Object.entries(TEAMS).map(([key, t]) => buildBoardRow(
     key,
-    teamName: board[key]?.teamName || t.label,
-    found: board[key]?.found || 0,
-    finished: board[key]?.finished || false,
-    lastUpdatedAt: board[key]?.lastUpdatedAt || 0
-  })).sort(compareBoardRows);
+    board[key]?.teamName || t.label,
+    board[key]?.found || 0,
+    board[key]?.finished || false,
+    board[key]?.lastUpdatedAt || 0
+  )).sort(compareBoardRows);
 }
 
 function remoteBoardRows(){
-  return Object.entries(TEAMS).map(([key, t]) => ({
+  return Object.entries(TEAMS).map(([key, t]) => buildBoardRow(
     key,
-    teamName: liveBoardCache[key]?.team_name || t.label,
-    found: liveBoardCache[key]?.found || 0,
-    finished: liveBoardCache[key]?.finished || false,
-    lastUpdatedAt: liveBoardCache[key]?.last_updated_at || 0
-  })).sort(compareBoardRows);
+    liveBoardCache[key]?.team_name || t.label,
+    liveBoardCache[key]?.found || 0,
+    liveBoardCache[key]?.finished || false,
+    liveBoardCache[key]?.last_updated_at || 0
+  )).sort(compareBoardRows);
 }
 
 function boardRows(){
@@ -346,11 +551,14 @@ function cachedRemoteProgress(team){
 
 function getCachedClaimedTeamName(team){
   const remoteProgress = cachedRemoteProgress(team);
-  if (remoteProgress && remoteProgress.teamName && remoteProgress.teamName !== TEAMS[team].label) return remoteProgress.teamName;
+  if (remoteProgress && hasTeamBeenClaimed(remoteProgress, team)) return remoteProgress.teamName;
   const boardRow = liveBoardCache[team];
-  if (boardRow && boardRow.team_name && boardRow.team_name !== TEAMS[team].label) return boardRow.team_name;
-  const local = loadLocalState(team);
-  if (local && local.teamName && local.teamName !== TEAMS[team].label) return local.teamName;
+  if (boardRow && Number(boardRow.last_updated_at || 0) > 0) return boardRow.team_name;
+  const rawLocal = localStorage.getItem(storageKey(team));
+  if (rawLocal){
+    const local = readJson(storageKey(team), null);
+    if (local && hasTeamBeenClaimed(local, team)) return local.teamName;
+  }
   return null;
 }
 
@@ -536,12 +744,8 @@ async function getClaimedTeamName(team){
 }
 
 function setGateNameLock(locked, value){
-  const input = el("gateTeamName");
-  if (!input) return;
-  input.value = value || "";
-  input.readOnly = !!locked;
-  input.disabled = !!locked;
-  input.placeholder = locked ? "Team name already locked" : "Enter team name";
+  populateMascotOptions(parseTeamIdentity(value, teamKey && TEAMS[teamKey] ? TEAMS[teamKey].label : "").mascotKey);
+  setTeamIdentityInputs(value || (teamKey && TEAMS[teamKey] ? TEAMS[teamKey].label : ""), locked);
 }
 
 async function pushRemoteProgress(){
@@ -607,11 +811,12 @@ function renderGateTeams(selected){
         setGateNameLock(true, claimedName);
       } else {
         const local = loadLocalState(teamKey);
-        setGateNameLock(false, (local && local.teamName && local.teamName !== team.label) ? local.teamName : "");
+        setGateNameLock(false, local?.teamName || team.label);
       }
     });
     mount.appendChild(btn);
   });
+  if (!selected) populateMascotOptions();
 }
 
 function renderTop(){
@@ -620,13 +825,17 @@ function renderTop(){
   const activeId = currentClueId();
   const stats = hintStats(state);
   const locked = clueAllowsHint(activeId) && state.nextHintAt && now < toMillis(state.nextHintAt);
+  const identity = teamIdentity(state.teamName, teamKey);
   el("progressCount").textContent = `${state.completed.length} / ${total}`;
   el("progressBar").style.width = `${(state.completed.length / total) * 100}%`;
+  buildEggProgressDots();
   el("hintCount").textContent = `${stats.usedDisplay} / ${stats.total}`;
   el("hintStatus").textContent = !clueAllowsHint(activeId)
     ? "No hint for this clue"
     : (locked ? `Next hint in ${fmtCountdown(toMillis(state.nextHintAt) - now)}` : (stats.remaining <= 0 ? "No hints left" : "Hint ready"));
-  el("teamDisplay").textContent = `${TEAMS[teamKey].label} • ${state.teamName}`;
+  el("teamDisplay").innerHTML = `${mascotBadgeMarkup(identity, { showLabel: true })}<span>${escapeHtml(TEAMS[teamKey].label)} • ${escapeHtml(identity.displayName)}</span>`;
+  applyTeamTheme(state.teamName, teamKey);
+  updateFinalMissionMode();
 }
 
 function renderChores(){
@@ -642,11 +851,11 @@ function renderChores(){
       div.innerHTML = `<strong>${clue.title}</strong>${clue.subtitle ? `<div class="muted">${clue.subtitle}</div>` : ""}<div class="muted">Found at: <strong>${clue.location}</strong></div>`;
     } else if (idx === state.progressIndex) {
       const activeCopy = isOnFinalClue(state, teamKey)
-        ? "Find the final egg, then scan its QR code to finish the hunt."
-        : "Find the egg, then scan its QR code to unlock the next chore.";
+        ? "Find the final egg, scan its QR, and lock in your finish."
+        : "Crack the QR code to unlock the next mission.";
       div.innerHTML = `<strong>${clue.title}</strong>${clue.subtitle ? `<div class="muted">${clue.subtitle}</div>` : ""}<div class="muted">${activeCopy}</div>`;
     } else {
-      div.innerHTML = `<strong>Locked chore</strong><div class="muted">Scan the correct egg to unlock this item.</div>`;
+      div.innerHTML = `<strong>Locked mission</strong><div class="muted">Scan the correct egg to unlock this item.</div>`;
     }
     list.appendChild(div);
   });
@@ -696,18 +905,26 @@ function renderHint(){
 function renderBoard(){
   const board = el("leaderboard");
   if (!board) return;
+  const rows = boardRows();
   board.innerHTML = "";
-  boardRows().forEach((row, i) => {
+  renderLeadBanner(rows);
+  rows.forEach((row, i) => {
     const place = i + 1;
     const trophy = row.finished ? trophyInfoForPlacement(place) : null;
+    const identity = teamIdentity(row.teamNameRaw || row.teamName, row.key);
     const div = document.createElement("div");
-    div.className = "leaderRow";
+    div.className = `leaderRow ${identity.mascot.badgeClass}`;
     div.innerHTML = `
       <div class="leaderMain">
-        ${trophy ? `<span class="${trophy.className}" aria-label="${trophy.label}">${trophy.icon}</span>` : ""}
+        ${trophy ? `<span class="${trophy.className}" aria-label="${trophy.label}">${trophy.icon}</span>` : mascotBadgeMarkup(identity)}
         <div class="leaderText">
-          <strong>${place}. ${row.teamName}</strong>
-          <div class="muted">${row.finished ? `${placementLabel(place)} • ${placementPrizeText(place)}` : (TEAMS[row.key]?.sequence?.[row.found] === 11 ? "Final clue unlocked" : "In progress")}</div>
+          <strong>${place}. ${escapeHtml(identity.displayName)}</strong>
+          <div class="leaderSubline">
+            ${mascotBadgeMarkup(identity, { showLabel: true })}
+            <span class="leaderMiniMeta">${escapeHtml(TEAMS[row.key]?.label || row.key)}</span>
+            ${place <= 3 && row.finished ? `<span class="candyBadge">🍬 ${escapeHtml(placementPrizeText(place))}</span>` : ""}
+          </div>
+          <div class="muted">${row.finished ? `${placementLabel(place)} • ${placementPrizeText(place)} at Andy's table` : (TEAMS[row.key]?.sequence?.[row.found] === 11 ? "Final clue unlocked" : "In progress")}</div>
         </div>
       </div>
       <div class="leaderRight">
@@ -727,9 +944,19 @@ function renderAdminStatuses(){
     const progress = liveProgressCache[key] || loadLocalState(key) || defaultState(team.label);
     const currentId = team.sequence[progress.progressIndex];
     const current = currentId ? CLUES[currentId] : null;
+    const lastSolvedId = Array.isArray(progress.completed) && progress.completed.length ? progress.completed[progress.completed.length - 1] : null;
+    const lastSolved = lastSolvedId ? CLUES[lastSolvedId] : null;
+    const identity = teamIdentity(progress.teamName, key);
     const row = document.createElement("div");
-    row.className = "adminStatusRow";
-    row.innerHTML = `<strong>${progress.teamName || team.label}</strong><div class="adminStatusMeta">${progress.finished ? "Finished" : current ? `On clue ${progress.progressIndex + 1}: ${current.location}` : "Not started"}</div><div class="adminStatusMeta">${progress.completed?.length || 0} clues found</div>`;
+    row.className = `adminStatusRow ${identity.mascot.badgeClass}`;
+    row.innerHTML = `
+      <strong>${escapeHtml(identity.displayName)}</strong>
+      <div class="leaderSubline">
+        ${mascotBadgeMarkup(identity, { showLabel: true })}
+        <span class="leaderMiniMeta">${escapeHtml(team.label)}</span>
+      </div>
+      <div class="adminStatusLocation">${progress.finished ? "Finished" : current ? `On clue ${progress.progressIndex + 1}: ${escapeHtml(current.location)}` : "Not started"}</div>
+      <div class="adminStatusMeta">${progress.completed?.length || 0} clues found${lastSolved ? ` • Last cleared: ${escapeHtml(lastSolved.location)}` : ""}</div>`;
     mount.appendChild(row);
   });
 }
@@ -752,6 +979,7 @@ async function renderAll(options = {}){
   renderHint();
   renderFinalEggCard();
   renderBoard();
+  updateFinalMissionMode();
   if (shouldPersist) await persistAll();
 }
 
@@ -808,9 +1036,30 @@ async function unlockToken(token, options = {}){
 
   const result = applyProgressAdvance(teamKey, state, expected);
   await renderAll();
-  if (result.status === "ready-final-egg") setPage("choresPage");
+  if (result.status === "ready-final-egg") {
+    setPage("choresPage");
+    burstCelebration("success");
+    showMissionOverlay({
+      badge: "🏁 Final mission unlocked",
+      title: "The last riddle is live",
+      copy: "You broke into the final stretch. Head back to the mission board for your last location.",
+      meta: "Only one more egg stands between your team and the candy table."
+    });
+  } else if (result.status === "correct") {
+    const nextId = currentClueId();
+    const nextClue = CLUES[nextId];
+    setPage("choresPage");
+    burstCelebration("success");
+    showMissionOverlay({
+      badge: "✅ Mission unlocked",
+      title: "Nice scan. Next clue unlocked.",
+      copy: nextClue ? nextClue.title : "Your next mission is ready.",
+      meta: "Head back to the mission board and decode the next riddle before another team jumps you."
+    });
+  }
   if (state.finished) {
     setPage("choresPage");
+    burstCelebration("victory");
     showVictoryOverlay();
   }
 
@@ -832,13 +1081,15 @@ function renderFinalEggCard(){
 
   if (!teamKey || !state){
     card.classList.add("hidden");
+    card.classList.remove("finalMissionGlow");
     return;
   }
 
   if (state.finished){
+    card.classList.remove("hidden");
+    card.classList.add("finalMissionGlow");
     const place = finishPlacementForTeam(teamKey) || 1;
     const prizeText = placementPrizeText(place);
-    card.classList.remove("hidden");
     badge.textContent = "🏆 Victory locked";
     title.textContent = `Your team finished in ${placementLabel(place)} and won ${prizeText}.`;
     copy.textContent = `Go to Andy for ${prizeText}. Your placement is locked in and the leaderboard has been updated.`;
@@ -848,14 +1099,16 @@ function renderFinalEggCard(){
 
   if (isOnFinalClue(state, teamKey)){
     card.classList.remove("hidden");
+    card.classList.add("finalMissionGlow");
     badge.textContent = "🥚 Final clue";
     title.textContent = "Your final clue is unlocked.";
-    copy.textContent = "Find the final egg and scan its QR code to finish the hunt.";
+    copy.textContent = "Find the final egg and scan its QR code to finish the hunt. The house is down to one last secret.";
     viewBtn.classList.add("hidden");
     return;
   }
 
   card.classList.add("hidden");
+  card.classList.remove("finalMissionGlow");
 }
 
 function hideVictoryOverlay(){
@@ -867,8 +1120,8 @@ function showVictoryOverlay(){
   if (!teamKey || !state || !state.finished) return;
   const place = finishPlacementForTeam(teamKey) || 1;
   const prizeText = placementPrizeText(place);
-  if (el("victoryTitle")) el("victoryTitle").textContent = `${state.teamName} found the final egg!`;
-  if (el("victoryPlacement")) el("victoryPlacement").textContent = `Your team came in ${placementLabel(place)} and won ${prizeText}.`;
+  if (el("victoryTitle")) el("victoryTitle").textContent = `${teamIdentity(state.teamName, teamKey).displayName} found the final egg!`;
+  if (el("victoryPlacement")) el("victoryPlacement").textContent = `Your team came in ${placementLabel(place)} and earned ${prizeText}.`;
   if (el("victoryRankWord")) el("victoryRankWord").textContent = placementLabel(place).replace(/^./, char => char.toUpperCase());
   if (el("victoryMeta")) el("victoryMeta").textContent = place <= 3
     ? `Go to Andy for your ${prizeText}. The final egg was at ${finalEggInfo().location}. The leaderboard has been updated and your team earned the ${place === 1 ? "gold" : place === 2 ? "silver" : "bronze"} trophy.`
@@ -1246,8 +1499,8 @@ async function syncAdminFields(){
   const team = select.value;
   const remote = await loadRemoteProgress(team);
   const local = loadLocalState(team);
-  const name = remote?.teamName || local.teamName || TEAMS[team].label;
-  el("adminTeamName").value = name;
+  const rawName = remote?.teamName || local.teamName || TEAMS[team].label;
+  el("adminTeamName").value = teamIdentity(rawName, team).displayName;
 }
 
 async function adminSaveTeamName(){
@@ -1259,19 +1512,20 @@ async function adminSaveTeamName(){
   }
 
   let targetState = await loadRemoteProgress(team) || loadLocalState(team);
-  targetState.teamName = newName;
+  const existingIdentity = teamIdentity(targetState.teamName, team);
+  targetState.teamName = encodeTeamIdentity(newName, existingIdentity.mascotKey, TEAMS[team].label);
   if (!targetState.finished) targetState.lastUpdatedAt = Date.now();
   liveProgressCache[team] = { ...targetState };
   localStorage.setItem(storageKey(team), JSON.stringify(targetState));
 
   const localBoard = readJson(leaderboardKey(), {});
-  localBoard[team] = { teamName: newName, found: targetState.completed.length, finished: targetState.finished, lastUpdatedAt: targetState.lastUpdatedAt };
+  localBoard[team] = { teamName: targetState.teamName, found: targetState.completed.length, finished: targetState.finished, lastUpdatedAt: targetState.lastUpdatedAt };
   localStorage.setItem(leaderboardKey(), JSON.stringify(localBoard));
 
   if (supabaseReady){
     await supabaseClient.from("team_progress_sigtau").upsert({
       team_id: team,
-      team_name: newName,
+      team_name: targetState.teamName,
       progress_index: targetState.progressIndex,
       completed: targetState.completed,
       scanned_tokens: targetState.scannedTokens,
@@ -1284,17 +1538,17 @@ async function adminSaveTeamName(){
 
     await supabaseClient.from("leaderboard_sigtau").upsert({
       team_id: team,
-      team_name: newName,
+      team_name: targetState.teamName,
       found: targetState.completed.length,
       finished: targetState.finished,
       last_updated_at: targetState.lastUpdatedAt
     }, { onConflict: "team_id" });
 
-    liveBoardCache[team] = { team_id: team, team_name: newName, found: targetState.completed.length, finished: targetState.finished, last_updated_at: targetState.lastUpdatedAt };
+    liveBoardCache[team] = { team_id: team, team_name: targetState.teamName, found: targetState.completed.length, finished: targetState.finished, last_updated_at: targetState.lastUpdatedAt };
   }
 
   if (teamKey === team && state){
-    state.teamName = newName;
+    state.teamName = targetState.teamName;
     await renderAll({ persist: false });
   } else {
     renderBoard();
@@ -1614,9 +1868,13 @@ function wireAdminEvents(){
   if (el("adminResetTeamBtn")) el("adminResetTeamBtn").addEventListener("click", adminResetTeam);
   if (el("adminResetAllBtn")) el("adminResetAllBtn").addEventListener("click", adminResetAll);
   if (el("adminReloadTeamBtn")) el("adminReloadTeamBtn").addEventListener("click", adminReloadTeam);
+  if (el("missionCloseX")) el("missionCloseX").addEventListener("click", hideMissionOverlay);
+  if (el("missionOverlay")) el("missionOverlay").addEventListener("click", e => { if (e.target === el("missionOverlay")) hideMissionOverlay(); });
   if (el("victoryCloseX")) el("victoryCloseX").addEventListener("click", hideVictoryOverlay);
   if (el("victoryLeaderboardBtn")) el("victoryLeaderboardBtn").addEventListener("click", () => {
     hideVictoryOverlay();
+  hideMissionOverlay();
+  applyTeamTheme(encodeTeamIdentity("Sig Tau", DEFAULT_MASCOT, "Sig Tau"), null);
     setPage("mapPage");
   });
   if (el("victoryOverlay")) el("victoryOverlay").addEventListener("click", e => { if (e.target === el("victoryOverlay")) hideVictoryOverlay(); });
@@ -1668,7 +1926,8 @@ if (el("startGameBtn")) {
     const remote = await loadRemoteProgress(teamKey);
     if (remote) loaded = remote;
     state = loaded;
-    state.teamName = claimedName || enteredName || state.teamName || TEAMS[teamKey].label;
+    const selectedMascot = normalizeMascotKey(el("gateMascotSelect")?.value || DEFAULT_MASCOT);
+    state.teamName = claimedName || encodeTeamIdentity(enteredName || teamIdentity(state.teamName, teamKey).displayName || TEAMS[teamKey].label, selectedMascot, TEAMS[teamKey].label);
     if (!state.startedAt) state.startedAt = Date.now();
     if (!state.lastUpdatedAt) state.lastUpdatedAt = Date.now();
     rememberTeam(teamKey, state.startedAt);
@@ -1714,6 +1973,7 @@ async function autoResumeRememberedTeam(){
   if (!state.startedAt) state.startedAt = Date.now();
   if (!state.lastUpdatedAt) state.lastUpdatedAt = Date.now();
   renderGateTeams(saved);
+  populateMascotOptions(teamIdentity(state.teamName, saved).mascotKey);
   setGateNameLock(true, state.teamName || TEAMS[saved].label);
   if (el("teamGate")) el("teamGate").classList.add("hidden");
   rememberTeam(saved, state.startedAt);
@@ -1738,6 +1998,7 @@ async function refreshSharedData(){
 (async function boot(){
   await initSupabase();
   renderGateTeams(null);
+  populateMascotOptions();
   setGateNameLock(false, "");
   renderBoard();
   updateSharedModeText();
