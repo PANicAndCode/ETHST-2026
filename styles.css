@@ -114,9 +114,6 @@ input,select{border:1px solid #e4d5c4;width:100%;background:white}
 .mapPageLeaderboardOnly{grid-template-columns:1fr!important}
 
 
-/* Game 2 adjustments */
-.kpiAmber, #hintStationCard { display:none !important; }
-
 
 /* Sig Tau additions */
 .dangerBtn{background:linear-gradient(180deg,#ff8a80,#e53935);color:white;border:none}

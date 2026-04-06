@@ -2,68 +2,69 @@ const CLUES = {
   "1": {
     "title": "Best unintentional prep for Sig Tau Freeze, two years running.",
     "location": "Storage room",
-    "hint": "",
-    "zone": { "x": 61, "y": 41 }
+    "hint": "Took like three weeks for this item to come in.",
+    "zone": { "x": 55, "y": 77 }
   },
   "2": {
     "title": "The next freshman class better get this piece of shit out of here.",
     "location": "Colby\u2019s Cudgel",
-    "hint": "",
-    "zone": { "x": 61, "y": 65 }
+    "hint": "Last Pat’s winner.",
+    "zone": { "x": 18, "y": 62 }
   },
   "3": {
     "title": "Rest in peace hallway couch.",
     "location": "Tree at the end of the Hallway",
-    "hint": "",
-    "zone": { "x": 7, "y": 65 }
+    "hint": "Look for some life in the house.",
+    "zone": { "x": 38, "y": 30 }
   },
   "4": {
     "title": "Our newest replacement 8 ball (after it got stolen, again) looks a little weird.",
     "location": "Pool Table",
-    "hint": "",
-    "zone": { "x": 77, "y": 21 }
+    "hint": "Pool table.",
+    "zone": { "x": 75, "y": 79 }
   },
   "5": {
     "title": "It\u2019s getting out of season and it\u2019s time for a new paint job.",
     "location": "Letters outside",
-    "hint": "",
-    "zone": { "x": 6, "y": 95 }
+    "hint": "ΣΤΓ",
+    "zone": { "x": 48, "y": 92 }
   },
   "6": {
     "title": "Maybe JJ can live here one day.",
     "location": "The Cave",
-    "hint": "",
-    "zone": { "x": 41, "y": 13 }
+    "hint": "Under construction for water damage",
+    "zone": { "x": 86, "y": 80 }
   },
   "7": {
     "title": "Freshman, don\u2019t forget to start these.",
     "location": "Dishwasher",
-    "hint": "",
-    "zone": { "x": 57, "y": 30 }
+    "hint": "Rhymes with wishdasher.",
+    "zone": { "x": 68, "y": 56 }
   },
   "8": {
     "title": "A fine edition to the collection.",
     "location": "I-Bar, in the Cans",
-    "hint": "",
-    "zone": { "x": 67, "y": 76 }
+    "hint": "Sig Tau’s like to drink.",
+    "zone": { "x": 71, "y": 85 }
   },
   "9": {
     "title": "It\u2019s getting warmer out, we should do another brotherhood here.",
     "location": "Fire pit",
-    "hint": "",
-    "zone": { "x": 54, "y": 4 }
+    "hint": "BONFIRE!",
+    "zone": { "x": 82, "y": 95 }
   },
   "10": {
     "title": "What is this even keeping private?",
     "location": "Privacy Fence",
-    "hint": "",
-    "zone": { "x": 74, "y": 87 }
+    "hint": "Check the deck.",
+    "zone": { "x": 94, "y": 92 }
   },
   "11": {
     "title": "Final Clue: To win, you must look inside the mind of a noble man.",
     "location": "In the Knight",
-    "hint": "",
-    "zone": { "x": 65, "y": 69 }
+    "hint": "You can’t use a hint for this.",
+    "noHint": true,
+    "zone": { "x": 60, "y": 68 }
   }
 };
 

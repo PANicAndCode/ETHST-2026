@@ -1,4 +1,5 @@
 const COOLDOWN_MINUTES = 10;
+const BASE_HINTS = 3;
 const STORAGE_PREFIX = "sigtau-easter-hunt-v1";
 const REMEMBERED_TEAM_KEY = `${STORAGE_PREFIX}-remembered-team`;
 const REMEMBERED_TEAM_STARTED_KEY = `${STORAGE_PREFIX}-remembered-team-started`;
@@ -69,6 +70,23 @@ function toMillis(value){
   if (typeof value === "number") return value;
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function hintStats(targetState = state){
+  const usedRaw = Number(targetState?.usedHints || 0);
+  const total = BASE_HINTS + Math.max(0, -usedRaw);
+  const remaining = Math.max(0, BASE_HINTS - usedRaw);
+  const usedDisplay = Math.max(0, total - remaining);
+  return { usedRaw, usedDisplay, total, remaining };
+}
+
+function currentClueId(targetState = state, team = teamKey){
+  return team && targetState ? TEAMS[team]?.sequence?.[targetState.progressIndex] : null;
+}
+
+function clueAllowsHint(clueId){
+  const clue = clueId ? CLUES[clueId] : null;
+  return !!(clue && clue.hint && !clue.noHint);
 }
 
 
@@ -578,11 +596,15 @@ function renderGateTeams(selected){
 function renderTop(){
   if (!teamKey || !state) return;
   const total = TEAMS[teamKey].sequence.length;
+  const activeId = currentClueId();
+  const stats = hintStats(state);
+  const locked = clueAllowsHint(activeId) && state.nextHintAt && now < toMillis(state.nextHintAt);
   el("progressCount").textContent = `${state.completed.length} / ${total}`;
   el("progressBar").style.width = `${(state.completed.length / total) * 100}%`;
-  el("hintCount").textContent = `${state.usedHints} / 3`;
-  const locked = state.nextHintAt && now < toMillis(state.nextHintAt);
-  el("hintStatus").textContent = locked ? `Next hint in ${fmtCountdown(toMillis(state.nextHintAt) - now)}` : (state.usedHints >= 3 ? "No hints left" : "Hint ready");
+  el("hintCount").textContent = `${stats.usedDisplay} / ${stats.total}`;
+  el("hintStatus").textContent = !clueAllowsHint(activeId)
+    ? "No hint for this clue"
+    : (locked ? `Next hint in ${fmtCountdown(toMillis(state.nextHintAt) - now)}` : (stats.remaining <= 0 ? "No hints left" : "Hint ready"));
   el("teamDisplay").textContent = `${TEAMS[teamKey].label} • ${state.teamName}`;
 }
 
@@ -631,12 +653,16 @@ function renderMap(){
 
 function renderHint(){
   if (!teamKey || !state) return;
-  const activeId = TEAMS[teamKey].sequence[state.progressIndex];
+  const activeId = currentClueId();
   const clue = CLUES[activeId];
-  const locked = state.nextHintAt && now < toMillis(state.nextHintAt);
-  el("hintBtn").disabled = state.usedHints >= 3 || locked || !clue;
-  el("hintsLeft").textContent = `Hints left: ${3 - state.usedHints}`;
-  el("hintBox").textContent = state.usedHints > 0 && clue ? clue.hint : "No hint displayed yet for this active clue.";
+  const stats = hintStats(state);
+  const canHint = clueAllowsHint(activeId);
+  const locked = canHint && state.nextHintAt && now < toMillis(state.nextHintAt);
+  el("hintBtn").disabled = !canHint || stats.remaining <= 0 || locked || !clue;
+  el("hintsLeft").textContent = canHint ? `Hints left: ${stats.remaining}` : "Hints are disabled for this clue.";
+  el("hintBox").textContent = !clue
+    ? "No active clue."
+    : (!canHint ? (clue.hint || "Hints are disabled for this clue.") : (stats.usedDisplay > 0 ? clue.hint : "No hint displayed yet for this active clue."));
   if (locked){
     el("hintTimerPill").hidden = false;
     el("hintTimerPill").textContent = fmtCountdown(toMillis(state.nextHintAt) - now);
@@ -1390,6 +1416,79 @@ async function adminGrantNext(){
 }
 
 
+async function adminGrantHint(){
+  const team = el("adminTeamSelect").value;
+  let targetState = await loadRemoteProgress(team) || loadLocalState(team);
+  targetState.usedHints = Number(targetState.usedHints || 0) - 1;
+  targetState.nextHintAt = null;
+  targetState.lastUpdatedAt = Date.now();
+
+  localStorage.setItem(storageKey(team), JSON.stringify(targetState));
+  liveProgressCache[team] = { ...targetState };
+
+  if (supabaseReady) {
+    await supabaseClient.from("team_progress_sigtau").upsert({
+      team_id: team,
+      team_name: targetState.teamName,
+      progress_index: targetState.progressIndex,
+      completed: targetState.completed,
+      scanned_tokens: targetState.scannedTokens,
+      used_hints: targetState.usedHints,
+      next_hint_at: targetState.nextHintAt,
+      finished: targetState.finished,
+      started_at: targetState.startedAt,
+      last_updated_at: targetState.lastUpdatedAt
+    }, { onConflict: "team_id" });
+  }
+
+  if (teamKey === team){
+    state = targetState;
+    await renderAll({ persist: false });
+  } else {
+    renderAdminStatuses();
+  }
+
+  await syncAdminFields();
+  const stats = hintStats(targetState);
+  el("adminPanelFeedback").textContent = `${TEAMS[team].label} now has ${stats.remaining} hint${stats.remaining === 1 ? "" : "s"} available.`;
+}
+
+async function adminSkipHintTimer(){
+  const team = el("adminTeamSelect").value;
+  let targetState = await loadRemoteProgress(team) || loadLocalState(team);
+  targetState.nextHintAt = null;
+  targetState.lastUpdatedAt = Date.now();
+
+  localStorage.setItem(storageKey(team), JSON.stringify(targetState));
+  liveProgressCache[team] = { ...targetState };
+
+  if (supabaseReady) {
+    await supabaseClient.from("team_progress_sigtau").upsert({
+      team_id: team,
+      team_name: targetState.teamName,
+      progress_index: targetState.progressIndex,
+      completed: targetState.completed,
+      scanned_tokens: targetState.scannedTokens,
+      used_hints: targetState.usedHints,
+      next_hint_at: targetState.nextHintAt,
+      finished: targetState.finished,
+      started_at: targetState.startedAt,
+      last_updated_at: targetState.lastUpdatedAt
+    }, { onConflict: "team_id" });
+  }
+
+  if (teamKey === team){
+    state = targetState;
+    await renderAll({ persist: false });
+  } else {
+    renderAdminStatuses();
+  }
+
+  await syncAdminFields();
+  el("adminPanelFeedback").textContent = `${TEAMS[team].label} can use its next hint immediately.`;
+}
+
+
 async function adminResetAll(){
   if (!window.confirm("Reset the full game for every team?")) return;
   const nowTs = Date.now();
@@ -1486,6 +1585,8 @@ function wireAdminEvents(){
   if (el("adminTeamSelect")) el("adminTeamSelect").addEventListener("change", syncAdminFields);
   if (el("adminSaveNameBtn")) el("adminSaveNameBtn").addEventListener("click", adminSaveTeamName);
   if (el("adminGrantNextBtn")) el("adminGrantNextBtn").addEventListener("click", adminGrantNext);
+  if (el("adminGrantHintBtn")) el("adminGrantHintBtn").addEventListener("click", adminGrantHint);
+  if (el("adminSkipHintTimerBtn")) el("adminSkipHintTimerBtn").addEventListener("click", adminSkipHintTimer);
   if (el("adminToggleMapBtn")) el("adminToggleMapBtn").addEventListener("click", adminToggleMap);
   if (el("adminResetTeamBtn")) el("adminResetTeamBtn").addEventListener("click", adminResetTeam);
   if (el("adminResetAllBtn")) el("adminResetAllBtn").addEventListener("click", adminResetAll);
@@ -1556,10 +1657,12 @@ if (el("startGameBtn")) {
 if (el("hintBtn")) {
   el("hintBtn").addEventListener("click", async () => {
     if (!state) return;
-    const locked = state.nextHintAt && now < toMillis(state.nextHintAt);
-    if (state.usedHints >= 3 || locked) return;
+    const activeId = currentClueId();
+    const stats = hintStats(state);
+    const locked = clueAllowsHint(activeId) && state.nextHintAt && now < toMillis(state.nextHintAt);
+    if (!clueAllowsHint(activeId) || stats.remaining <= 0 || locked) return;
     state.usedHints += 1;
-    state.nextHintAt = state.usedHints >= 3 ? null : Date.now() + COOLDOWN_MINUTES * 60 * 1000;
+    state.nextHintAt = hintStats(state).remaining <= 0 ? null : Date.now() + COOLDOWN_MINUTES * 60 * 1000;
     state.lastUpdatedAt = Date.now();
     await renderAll();
   });
