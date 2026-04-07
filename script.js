@@ -353,8 +353,8 @@ function defaultState(teamLabel){
     nextHintAt: null,
     revealedHintClueId: null,
     finished: false,
-    startedAt: Date.now(),
-    lastUpdatedAt: Date.now()
+    startedAt: 0,
+    lastUpdatedAt: 0
   };
 }
 
@@ -693,9 +693,7 @@ function subscribeTeamProgress(){
 
         const remembered = rememberedTeamRecord();
         const startedChanged = remembered && remembered.team === row.team_id
-          && Number(remembered.startedAt || 0) > 0
-          && Number(normalized.startedAt || 0) > 0
-          && Number(remembered.startedAt) !== Number(normalized.startedAt);
+          && Number(remembered.startedAt || 0) !== Number(normalized.startedAt || 0);
 
         if (startedChanged){
           releaseTeamSelection("That team was reset. Pick a team to join again.");
@@ -1564,8 +1562,8 @@ async function adminSaveTeamName(){
 async function adminResetTeam(){
   const team = el("adminTeamSelect").value;
   const fresh = defaultState(TEAMS[team].label);
-  fresh.startedAt = Date.now();
-  fresh.lastUpdatedAt = fresh.startedAt;
+  fresh.startedAt = 0;
+  fresh.lastUpdatedAt = 0;
   liveProgressCache[team] = { ...fresh };
   localStorage.setItem(storageKey(team), JSON.stringify(fresh));
 
@@ -1771,21 +1769,20 @@ async function adminSkipHintTimer(){
 
 async function adminResetAll(){
   if (!window.confirm("Reset the full game for every team?")) return;
-  const nowTs = Date.now();
   const boardReset = {};
   for (const [team, meta] of Object.entries(TEAMS)) {
     const fresh = defaultState(meta.label);
-    fresh.startedAt = nowTs;
-    fresh.lastUpdatedAt = nowTs;
+    fresh.startedAt = 0;
+    fresh.lastUpdatedAt = 0;
     localStorage.setItem(storageKey(team), JSON.stringify(fresh));
     liveProgressCache[team] = { ...fresh };
-    boardReset[team] = { teamName: fresh.teamName, found: 0, finished: false, lastUpdatedAt: nowTs };
+    boardReset[team] = { teamName: fresh.teamName, found: 0, finished: false, lastUpdatedAt: 0 };
     if (supabaseReady) {
       await supabaseClient.from("team_progress_sigtau").upsert({
         team_id: team, team_name: fresh.teamName, progress_index: 0, completed: [], scanned_tokens: [], used_hints: 0, next_hint_at: null, finished: false, started_at: fresh.startedAt, last_updated_at: fresh.lastUpdatedAt
       }, { onConflict: "team_id" });
       await supabaseClient.from("leaderboard_sigtau").upsert({
-        team_id: team, team_name: fresh.teamName, found: 0, finished: false, last_updated_at: nowTs
+        team_id: team, team_name: fresh.teamName, found: 0, finished: false, last_updated_at: 0
       }, { onConflict: "team_id" });
     }
   }
@@ -1965,7 +1962,7 @@ async function autoResumeRememberedTeam(){
   if (!remembered) return false;
   const saved = remembered.team;
   const remote = await loadRemoteProgress(saved);
-  if (remote && Number(remembered.startedAt || 0) > 0 && Number(remote.startedAt || 0) > 0 && Number(remembered.startedAt) !== Number(remote.startedAt)) {
+  if (remote && Number(remembered.startedAt || 0) !== Number(remote.startedAt || 0)) {
     clearRememberedTeam(saved);
     renderGateTeams(null);
     setGateNameLock(false, "");
