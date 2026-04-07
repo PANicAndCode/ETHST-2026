@@ -1,19 +1,7 @@
 const COOLDOWN_MINUTES = 10;
-const BASE_HINTS = 3;
 const STORAGE_PREFIX = "sigtau-easter-hunt-v1";
 const REMEMBERED_TEAM_KEY = `${STORAGE_PREFIX}-remembered-team`;
-const REMEMBERED_TEAM_STARTED_KEY = `${STORAGE_PREFIX}-remembered-team-started`;
 const ADMIN_PASSCODE = "bunnyboss";
-const TEAM_IDENTITY_SEPARATOR = "|||";
-const DEFAULT_MASCOT = "rabbit";
-const MASCOTS = {
-  rabbit: { label: "Rabbits", emoji: "🐰", badgeClass: "mascot-rabbit" },
-  knight: { label: "Knights", emoji: "🛡️", badgeClass: "mascot-knight" },
-  raven: { label: "Ravens", emoji: "🪶", badgeClass: "mascot-raven" },
-  wolf: { label: "Wolves", emoji: "🐺", badgeClass: "mascot-wolf" },
-  fox: { label: "Foxes", emoji: "🦊", badgeClass: "mascot-fox" },
-  cobra: { label: "Cobras", emoji: "🐍", badgeClass: "mascot-cobra" }
-};
 const MAP_ENABLED_KEY = `${STORAGE_PREFIX}-map-enabled`;
 const SHARED_SETTINGS_TEAM_ID = "__settings__";
 
@@ -32,43 +20,12 @@ let mapEnabled = localMapEnabled();
 function el(id){ return document.getElementById(id); }
 function storageKey(team){ return `${STORAGE_PREFIX}-${team}`; }
 function leaderboardKey(){ return `${STORAGE_PREFIX}-leaderboard`; }
-function rememberedTeamRecord(){
-  const saved = localStorage.getItem(REMEMBERED_TEAM_KEY);
-  if (!saved || !TEAMS[saved]) return null;
-  const startedRaw = localStorage.getItem(REMEMBERED_TEAM_STARTED_KEY);
-  return { team: saved, startedAt: startedRaw ? Number(startedRaw) : 0 };
-}
 function rememberedTeam(){
-  return rememberedTeamRecord()?.team || null;
-}
-function rememberTeam(team, startedAt){
-  if (!team || !TEAMS[team]) return;
-  localStorage.setItem(REMEMBERED_TEAM_KEY, team);
-  localStorage.setItem(REMEMBERED_TEAM_STARTED_KEY, String(Number(startedAt) || 0));
-}
-function clearRememberedTeam(team){
   const saved = localStorage.getItem(REMEMBERED_TEAM_KEY);
-  if (!team || saved === team){
-    localStorage.removeItem(REMEMBERED_TEAM_KEY);
-    localStorage.removeItem(REMEMBERED_TEAM_STARTED_KEY);
-  }
+  return saved && TEAMS[saved] ? saved : null;
 }
-function releaseTeamSelection(message){
-  clearRememberedTeam();
-  teamKey = null;
-  state = null;
-  stopCamera();
-  hideAdminOverlay();
-  hideAdminPanel();
-  hideVictoryOverlay();
-  hideMissionOverlay();
-  applyTeamTheme(encodeTeamIdentity("Sig Tau", DEFAULT_MASCOT, "Sig Tau"), null);
-  if (el("teamGate")) el("teamGate").classList.remove("hidden");
-  renderGateTeams(null);
-  populateMascotOptions();
-  setGateNameLock(false, "");
-  if (el("gateTeamName")) el("gateTeamName").value = "";
-  if (message) setFeedback(message);
+function rememberTeam(team){
+  if (team && TEAMS[team]) localStorage.setItem(REMEMBERED_TEAM_KEY, team);
 }
 function clueStatusForTeam(team){
   const progress = liveProgressCache[team] || loadLocalState(team);
@@ -85,206 +42,6 @@ function toMillis(value){
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-function hintStats(targetState = state){
-  const usedRaw = Number(targetState?.usedHints || 0);
-  const total = BASE_HINTS + Math.max(0, -usedRaw);
-  const remaining = Math.max(0, BASE_HINTS - usedRaw);
-  const usedDisplay = Math.max(0, total - remaining);
-  return { usedRaw, usedDisplay, total, remaining };
-}
-
-function revealedHintForClue(targetState = state, team = teamKey){
-  const activeId = currentClueId(targetState, team);
-  return !!(activeId && targetState && Number(targetState.revealedHintClueId) === Number(activeId));
-}
-
-function currentClueId(targetState = state, team = teamKey){
-  return team && targetState ? TEAMS[team]?.sequence?.[targetState.progressIndex] : null;
-}
-
-function clueAllowsHint(clueId){
-  const clue = clueId ? CLUES[clueId] : null;
-  return !!(clue && clue.hint && !clue.noHint);
-}
-
-
-
-function escapeHtml(value){
-  return String(value ?? "").replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[char]));
-}
-
-function normalizeMascotKey(key){
-  return MASCOTS[key] ? key : DEFAULT_MASCOT;
-}
-
-function mascotMeta(key){
-  return MASCOTS[normalizeMascotKey(key)];
-}
-
-function encodeTeamIdentity(displayName, mascotKey = DEFAULT_MASCOT, fallbackName = "Team"){
-  const cleanName = (displayName || fallbackName || "Team").trim() || fallbackName || "Team";
-  return `${cleanName}${TEAM_IDENTITY_SEPARATOR}${normalizeMascotKey(mascotKey)}`;
-}
-
-function parseTeamIdentity(rawValue, fallbackName = "Team"){
-  const fallback = (fallbackName || "Team").trim() || "Team";
-  if (!rawValue || typeof rawValue !== "string") {
-    const mascot = mascotMeta(DEFAULT_MASCOT);
-    return { raw: encodeTeamIdentity(fallback, DEFAULT_MASCOT, fallback), displayName: fallback, mascotKey: DEFAULT_MASCOT, mascot };
-  }
-  const pieces = rawValue.split(TEAM_IDENTITY_SEPARATOR);
-  const displayName = (pieces[0] || fallback).trim() || fallback;
-  const mascotKey = normalizeMascotKey((pieces[1] || "").trim());
-  const mascot = mascotMeta(mascotKey);
-  return { raw: encodeTeamIdentity(displayName, mascotKey, fallback), displayName, mascotKey, mascot };
-}
-
-function teamIdentity(rawValue, team = teamKey){
-  const fallback = team && TEAMS[team] ? TEAMS[team].label : "Team";
-  return parseTeamIdentity(rawValue, fallback);
-}
-
-
-function hasTeamBeenClaimed(progress, team){
-  if (!progress) return false;
-  const joined = Number(progress.startedAt || 0) > 0 || Number(progress.progressIndex || 0) > 0 || (Array.isArray(progress.completed) && progress.completed.length > 0) || !!progress.finished;
-  const identity = teamIdentity(progress.teamName, team);
-  return joined || identity.displayName !== TEAMS[team].label || identity.mascotKey !== DEFAULT_MASCOT;
-}
-
-function mascotBadgeMarkup(identity, opts = {}){
-  if (!identity) return "";
-  const showLabel = !!opts.showLabel;
-  const label = showLabel ? ` ${escapeHtml(identity.mascot.label)}` : "";
-  return `<span class="mascotBadge ${identity.mascot.badgeClass}">${identity.mascot.emoji}${label}</span>`;
-}
-
-function teamThemeClass(rawValue, team = teamKey){
-  return teamIdentity(rawValue, team).mascot.badgeClass;
-}
-
-function applyTeamTheme(rawValue, team = teamKey){
-  const body = document.body;
-  if (!body) return;
-  Object.values(MASCOTS).forEach(meta => body.classList.remove(meta.badgeClass));
-  body.classList.add(teamThemeClass(rawValue, team));
-}
-
-function updateMascotPreview(selected){
-  const preview = el("gateMascotPreview");
-  if (!preview) return;
-  const mascot = mascotMeta(selected);
-  preview.className = `mascotPreviewCard ${mascot.badgeClass}`;
-  preview.innerHTML = `<span class="mascotPreviewEmoji">${mascot.emoji}</span><div><strong>${escapeHtml(mascot.label)}</strong><div class="small">This mascot becomes your team badge and color theme.</div></div>`;
-}
-
-function setTeamIdentityInputs(rawValue, locked){
-  const hasTeam = !!(teamKey && TEAMS[teamKey]);
-  const identity = parseTeamIdentity(rawValue, hasTeam ? TEAMS[teamKey].label : "");
-  const input = el("gateTeamName");
-  const select = el("gateMascotSelect");
-  if (input){
-    const displayName = !hasTeam ? "" : (identity.displayName === TEAMS[teamKey]?.label ? "" : identity.displayName);
-    input.value = locked ? identity.displayName : displayName;
-    input.readOnly = !!locked;
-    input.disabled = !!locked;
-    input.placeholder = locked ? "Team name already locked" : "Enter team name";
-  }
-  if (select){
-    select.value = identity.mascotKey;
-    select.disabled = !!locked;
-  }
-  updateMascotPreview(identity.mascotKey);
-}
-
-function currentGateIdentityRaw(){
-  const select = el("gateMascotSelect");
-  const input = el("gateTeamName");
-  const mascotKey = normalizeMascotKey(select?.value || DEFAULT_MASCOT);
-  const baseName = (input?.value || "").trim() || (teamKey && TEAMS[teamKey] ? TEAMS[teamKey].label : "Team");
-  return encodeTeamIdentity(baseName, mascotKey, teamKey && TEAMS[teamKey] ? TEAMS[teamKey].label : "Team");
-}
-
-function populateMascotOptions(selected = DEFAULT_MASCOT){
-  const select = el("gateMascotSelect");
-  if (!select) return;
-  if (!select.options.length){
-    Object.entries(MASCOTS).forEach(([key, mascot]) => {
-      const opt = document.createElement("option");
-      opt.value = key;
-      opt.textContent = `${mascot.emoji} ${mascot.label}`;
-      select.appendChild(opt);
-    });
-    select.addEventListener("change", () => updateMascotPreview(select.value));
-  }
-  select.value = normalizeMascotKey(selected);
-  updateMascotPreview(select.value);
-}
-
-function buildEggProgressDots(){
-  const mount = el("eggProgress");
-  if (!mount || !teamKey) return;
-  mount.innerHTML = "";
-  const total = teamTotal();
-  for (let i = 0; i < total; i += 1){
-    const dot = document.createElement("span");
-    dot.className = "eggDot";
-    if (i < state.completed.length) dot.classList.add("complete");
-    else if (i === state.progressIndex && !state.finished) dot.classList.add("current");
-    mount.appendChild(dot);
-  }
-}
-
-function burstCelebration(type = "success"){
-  const emojis = type === "victory" ? ["🍬","🏁","✨","🥚","🎉"] : ["✨","🥚","✅","🐰"];
-  for (let i = 0; i < 12; i += 1){
-    const piece = document.createElement("span");
-    piece.className = "burstEmoji";
-    piece.textContent = emojis[i % emojis.length];
-    piece.style.setProperty("--dx", `${(Math.random() * 320 - 160).toFixed(0)}px`);
-    piece.style.setProperty("--dy", `${(-220 - Math.random() * 180).toFixed(0)}px`);
-    document.body.appendChild(piece);
-    piece.addEventListener("animationend", () => piece.remove(), { once: true });
-  }
-  if (navigator.vibrate) navigator.vibrate(type === "victory" ? [120, 70, 180] : [80, 40, 110]);
-}
-
-function showMissionOverlay({ badge = "✅ Mission update", title = "Mission unlocked", copy = "You unlocked your next clue.", meta = "Head back to the mission board for your next riddle.", page = "choresPage" } = {}){
-  if (el("missionBadge")) el("missionBadge").textContent = badge;
-  if (el("missionTitle")) el("missionTitle").textContent = title;
-  if (el("missionCopy")) el("missionCopy").textContent = copy;
-  if (el("missionMeta")) el("missionMeta").textContent = meta;
-  const btn = el("missionActionBtn");
-  if (btn) btn.onclick = () => {
-    hideMissionOverlay();
-    setPage(page);
-  };
-  const overlay = el("missionOverlay");
-  if (overlay) overlay.classList.remove("hidden");
-}
-
-function hideMissionOverlay(){
-  const overlay = el("missionOverlay");
-  if (overlay) overlay.classList.add("hidden");
-}
-
-function renderLeadBanner(rows = boardRows()){
-  const banner = el("leadBanner");
-  if (!banner) return;
-  const activeRows = rows.filter(row => row.found > 0 || row.finished);
-  if (!activeRows.length){
-    banner.textContent = "The race is on. Crack the first egg and take the lead.";
-    return;
-  }
-  const leader = rows[0];
-  const identity = teamIdentity(leader.teamNameRaw || leader.teamName, leader.key);
-  const suffix = leader.finished ? `${placementPrizeText(1)} goes to Andy.` : `${leader.found} clues solved so far.`;
-  banner.innerHTML = `${mascotBadgeMarkup(identity)} <span><strong>${escapeHtml(identity.displayName)}</strong> is currently in the lead. ${escapeHtml(suffix)}</span>`;
-}
-
-function updateFinalMissionMode(){
-  document.body.classList.toggle("finalMissionMode", !!state && (isOnFinalClue(state, teamKey) || state.finished));
-}
 
 function localMapEnabled(){
   const raw = localStorage.getItem(MAP_ENABLED_KEY);
@@ -345,13 +102,12 @@ function applyMapVisibility(){
 
 function defaultState(teamLabel){
   return {
-    teamName: encodeTeamIdentity(teamLabel, DEFAULT_MASCOT, teamLabel),
+    teamName: teamLabel,
     progressIndex: 0,
     completed: [],
     scannedTokens: [],
     usedHints: 0,
     nextHintAt: null,
-    revealedHintClueId: null,
     finished: false,
     startedAt: Date.now(),
     lastUpdatedAt: Date.now()
@@ -369,9 +125,7 @@ function readJson(key, fallback){
 }
 
 function loadLocalState(team){
-  const saved = readJson(storageKey(team), defaultState(TEAMS[team].label));
-  if (saved && typeof saved.revealedHintClueId === "undefined") saved.revealedHintClueId = null;
-  return saved;
+  return readJson(storageKey(team), defaultState(TEAMS[team].label));
 }
 
 function saveLocalState(){
@@ -397,39 +151,25 @@ function compareBoardRows(a, b){
     || a.teamName.localeCompare(b.teamName);
 }
 
-function buildBoardRow(key, rawName, found, finished, lastUpdatedAt){
-  const identity = teamIdentity(rawName, key);
-  return {
-    key,
-    teamName: identity.displayName,
-    teamNameRaw: identity.raw,
-    mascotKey: identity.mascotKey,
-    mascot: identity.mascot,
-    found,
-    finished,
-    lastUpdatedAt
-  };
-}
-
 function localBoardRows(){
   const board = readJson(leaderboardKey(), {});
-  return Object.entries(TEAMS).map(([key, t]) => buildBoardRow(
+  return Object.entries(TEAMS).map(([key, t]) => ({
     key,
-    board[key]?.teamName || t.label,
-    board[key]?.found || 0,
-    board[key]?.finished || false,
-    board[key]?.lastUpdatedAt || 0
-  )).sort(compareBoardRows);
+    teamName: board[key]?.teamName || t.label,
+    found: board[key]?.found || 0,
+    finished: board[key]?.finished || false,
+    lastUpdatedAt: board[key]?.lastUpdatedAt || 0
+  })).sort(compareBoardRows);
 }
 
 function remoteBoardRows(){
-  return Object.entries(TEAMS).map(([key, t]) => buildBoardRow(
+  return Object.entries(TEAMS).map(([key, t]) => ({
     key,
-    liveBoardCache[key]?.team_name || t.label,
-    liveBoardCache[key]?.found || 0,
-    liveBoardCache[key]?.finished || false,
-    liveBoardCache[key]?.last_updated_at || 0
-  )).sort(compareBoardRows);
+    teamName: liveBoardCache[key]?.team_name || t.label,
+    found: liveBoardCache[key]?.found || 0,
+    finished: liveBoardCache[key]?.finished || false,
+    lastUpdatedAt: liveBoardCache[key]?.last_updated_at || 0
+  })).sort(compareBoardRows);
 }
 
 function boardRows(){
@@ -540,7 +280,6 @@ function normalizeRemoteProgress(data){
     finished: !!data.finished,
     startedAt: data.started_at,
     lastUpdatedAt: data.last_updated_at,
-    revealedHintClueId: data.revealed_hint_clue_id ?? null,
     mapEnabled: typeof data.map_enabled === "boolean" ? data.map_enabled : undefined
   };
 }
@@ -551,15 +290,48 @@ function cachedRemoteProgress(team){
 
 function getCachedClaimedTeamName(team){
   const remoteProgress = cachedRemoteProgress(team);
-  if (remoteProgress && hasTeamBeenClaimed(remoteProgress, team)) return remoteProgress.teamName;
+  if (remoteProgress && remoteProgress.teamName && remoteProgress.teamName !== TEAMS[team].label) return remoteProgress.teamName;
   const boardRow = liveBoardCache[team];
-  if (boardRow && Number(boardRow.last_updated_at || 0) > 0) return boardRow.team_name;
-  const rawLocal = localStorage.getItem(storageKey(team));
-  if (rawLocal){
-    const local = readJson(storageKey(team), null);
-    if (local && hasTeamBeenClaimed(local, team)) return local.teamName;
-  }
+  if (boardRow && boardRow.team_name && boardRow.team_name !== TEAMS[team].label) return boardRow.team_name;
+  const local = loadLocalState(team);
+  if (local && local.teamName && local.teamName !== TEAMS[team].label) return local.teamName;
   return null;
+}
+
+let syncPollInterval = null;
+
+function resolveSupabaseConfig(){
+  const cfg = window.SUPABASE_CONFIG && typeof window.SUPABASE_CONFIG === "object"
+    ? { url: window.SUPABASE_CONFIG.url, anonKey: window.SUPABASE_CONFIG.anonKey }
+    : null;
+  const fallback = {
+    url: window.SUPABASE_URL,
+    anonKey: window.SUPABASE_ANON_KEY
+  };
+  const chosen = (cfg && cfg.url && cfg.anonKey) ? cfg : fallback;
+  if (!chosen.url || !chosen.anonKey) return null;
+  if (String(chosen.url).startsWith("PASTE_")) return null;
+  return chosen;
+}
+
+function startSyncPolling(){
+  if (syncPollInterval) clearInterval(syncPollInterval);
+  if (!supabaseReady) return;
+  syncPollInterval = setInterval(async () => {
+    if (!supabaseReady) return;
+    try {
+      await Promise.all([fetchLeaderboard(), fetchAllRemoteProgress()]);
+    } catch (error) {
+      console.error(error);
+    }
+  }, 4000);
+}
+
+function stopSyncPolling(){
+  if (syncPollInterval) {
+    clearInterval(syncPollInterval);
+    syncPollInterval = null;
+  }
 }
 
 function updateSharedModeText(){
@@ -572,16 +344,14 @@ function updateSharedModeText(){
   } else {
     mode.hidden = false;
     mode.style.display = "block";
-    mode.textContent = "Cross-device sync needs Supabase configured in supabase-config.js.";
+    mode.textContent = "Cross-device sync is off. Check supabase-config.js and the Sig Tau Supabase tables.";
   }
 }
 
 async function initSupabase(){
   try{
-    const cfg = (window.SUPABASE_CONFIG && typeof window.SUPABASE_CONFIG === "object") ? window.SUPABASE_CONFIG : {};
-    const url = cfg.url || window.SUPABASE_URL || "";
-    const anonKey = cfg.anonKey || window.SUPABASE_ANON_KEY || "";
-    if (!url || !anonKey || String(url).startsWith("PASTE_")){
+    const supabaseConfig = resolveSupabaseConfig();
+    if (!supabaseConfig){
       if (el("leaderboardModeText")){
         el("leaderboardModeText").textContent = "Using local device leaderboard only.";
         el("leaderboardModeText").hidden = false;
@@ -591,7 +361,7 @@ async function initSupabase(){
       renderBoard();
       return;
     }
-    supabaseClient = window.supabase.createClient(url, anonKey);
+    supabaseClient = window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey);
     supabaseReady = true;
     if (el("leaderboardModeText")){
       el("leaderboardModeText").textContent = "";
@@ -602,9 +372,11 @@ async function initSupabase(){
     await Promise.all([fetchLeaderboard(), fetchAllRemoteProgress()]);
     subscribeLeaderboard();
     subscribeTeamProgress();
+    startSyncPolling();
   } catch (error){
     console.error(error);
     supabaseReady = false;
+    stopSyncPolling();
     if (el("leaderboardModeText")){
       el("leaderboardModeText").textContent = "Using local device leaderboard only.";
       el("leaderboardModeText").hidden = false;
@@ -621,6 +393,7 @@ async function fetchLeaderboard(){
   if (error){
     console.error(error);
     supabaseReady = false;
+    stopSyncPolling();
     if (el("leaderboardModeText")){
       el("leaderboardModeText").textContent = "Using local device leaderboard only.";
       el("leaderboardModeText").hidden = false;
@@ -645,10 +418,6 @@ async function fetchAllRemoteProgress(){
   liveProgressCache = {};
   (data || []).forEach(row => {
     const normalized = normalizeRemoteProgress(row);
-    const local = loadLocalState(row.team_id);
-    if (local && Number(local.startedAt || 0) === Number(normalized.startedAt || 0) && Number(local.progressIndex || 0) === Number(normalized.progressIndex || 0) && local.revealedHintClueId != null && normalized.revealedHintClueId == null) {
-      normalized.revealedHintClueId = local.revealedHintClueId;
-    }
     liveProgressCache[row.team_id] = normalized;
     localStorage.setItem(storageKey(row.team_id), JSON.stringify(normalized));
   });
@@ -684,22 +453,10 @@ function subscribeTeamProgress(){
         localStorage.removeItem(storageKey(row.team_id));
       } else {
         const normalized = normalizeRemoteProgress(row);
-        const local = loadLocalState(row.team_id);
-        if (local && Number(local.startedAt || 0) === Number(normalized.startedAt || 0) && Number(local.progressIndex || 0) === Number(normalized.progressIndex || 0) && local.revealedHintClueId != null && normalized.revealedHintClueId == null) {
-          normalized.revealedHintClueId = local.revealedHintClueId;
-        }
         liveProgressCache[row.team_id] = normalized;
         localStorage.setItem(storageKey(row.team_id), JSON.stringify(normalized));
 
-        const remembered = rememberedTeamRecord();
-        const startedChanged = remembered && remembered.team === row.team_id
-          && Number(remembered.startedAt || 0) > 0
-          && Number(normalized.startedAt || 0) > 0
-          && Number(remembered.startedAt) !== Number(normalized.startedAt);
-
-        if (startedChanged){
-          releaseTeamSelection("That team was reset. Pick a team to join again.");
-        } else if (teamKey === row.team_id){
+        if (teamKey === row.team_id){
           const incomingTs = toMillis(normalized.lastUpdatedAt);
           const currentTs = toMillis(state?.lastUpdatedAt);
           if (!state || incomingTs >= currentTs){
@@ -728,10 +485,6 @@ async function loadRemoteProgress(team){
   }
   const normalized = normalizeRemoteProgress(data);
   if (normalized) {
-    const local = loadLocalState(team);
-    if (local && Number(local.startedAt || 0) === Number(normalized.startedAt || 0) && Number(local.progressIndex || 0) === Number(normalized.progressIndex || 0) && local.revealedHintClueId != null && normalized.revealedHintClueId == null) {
-      normalized.revealedHintClueId = local.revealedHintClueId;
-    }
     liveProgressCache[team] = normalized;
     localStorage.setItem(storageKey(team), JSON.stringify(normalized));
   }
@@ -747,8 +500,12 @@ async function getClaimedTeamName(team){
 }
 
 function setGateNameLock(locked, value){
-  populateMascotOptions(parseTeamIdentity(value, teamKey && TEAMS[teamKey] ? TEAMS[teamKey].label : "").mascotKey);
-  setTeamIdentityInputs(value || (teamKey && TEAMS[teamKey] ? TEAMS[teamKey].label : ""), locked);
+  const input = el("gateTeamName");
+  if (!input) return;
+  input.value = value || "";
+  input.readOnly = !!locked;
+  input.disabled = !!locked;
+  input.placeholder = locked ? "Team name already locked" : "Enter team name";
 }
 
 async function pushRemoteProgress(){
@@ -814,31 +571,22 @@ function renderGateTeams(selected){
         setGateNameLock(true, claimedName);
       } else {
         const local = loadLocalState(teamKey);
-        setGateNameLock(false, local?.teamName || team.label);
+        setGateNameLock(false, (local && local.teamName && local.teamName !== team.label) ? local.teamName : "");
       }
     });
     mount.appendChild(btn);
   });
-  if (!selected) populateMascotOptions();
 }
 
 function renderTop(){
   if (!teamKey || !state) return;
   const total = TEAMS[teamKey].sequence.length;
-  const activeId = currentClueId();
-  const stats = hintStats(state);
-  const locked = clueAllowsHint(activeId) && state.nextHintAt && now < toMillis(state.nextHintAt);
-  const identity = teamIdentity(state.teamName, teamKey);
   el("progressCount").textContent = `${state.completed.length} / ${total}`;
   el("progressBar").style.width = `${(state.completed.length / total) * 100}%`;
-  buildEggProgressDots();
-  el("hintCount").textContent = `${stats.usedDisplay} / ${stats.total}`;
-  el("hintStatus").textContent = !clueAllowsHint(activeId)
-    ? "No hint for this clue"
-    : (locked ? `Next hint in ${fmtCountdown(toMillis(state.nextHintAt) - now)}` : (stats.remaining <= 0 ? "No hints left" : "Hint ready"));
-  el("teamDisplay").innerHTML = `${mascotBadgeMarkup(identity, { showLabel: true })}<span>${escapeHtml(TEAMS[teamKey].label)} • ${escapeHtml(identity.displayName)}</span>`;
-  applyTeamTheme(state.teamName, teamKey);
-  updateFinalMissionMode();
+  el("hintCount").textContent = `${state.usedHints} / 3`;
+  const locked = state.nextHintAt && now < toMillis(state.nextHintAt);
+  el("hintStatus").textContent = locked ? `Next hint in ${fmtCountdown(toMillis(state.nextHintAt) - now)}` : (state.usedHints >= 3 ? "No hints left" : "Hint ready");
+  el("teamDisplay").textContent = `${TEAMS[teamKey].label} • ${state.teamName}`;
 }
 
 function renderChores(){
@@ -854,11 +602,11 @@ function renderChores(){
       div.innerHTML = `<strong>${clue.title}</strong>${clue.subtitle ? `<div class="muted">${clue.subtitle}</div>` : ""}<div class="muted">Found at: <strong>${clue.location}</strong></div>`;
     } else if (idx === state.progressIndex) {
       const activeCopy = isOnFinalClue(state, teamKey)
-        ? "Find the final egg, scan its QR, and lock in your finish."
-        : "Crack the QR code to unlock the next mission.";
+        ? "Find the final egg, then scan its QR code to finish the hunt."
+        : "Find the egg, then scan its QR code to unlock the next chore.";
       div.innerHTML = `<strong>${clue.title}</strong>${clue.subtitle ? `<div class="muted">${clue.subtitle}</div>` : ""}<div class="muted">${activeCopy}</div>`;
     } else {
-      div.innerHTML = `<strong>Locked mission</strong><div class="muted">Scan the correct egg to unlock this item.</div>`;
+      div.innerHTML = `<strong>Locked chore</strong><div class="muted">Scan the correct egg to unlock this item.</div>`;
     }
     list.appendChild(div);
   });
@@ -886,17 +634,12 @@ function renderMap(){
 
 function renderHint(){
   if (!teamKey || !state) return;
-  const activeId = currentClueId();
+  const activeId = TEAMS[teamKey].sequence[state.progressIndex];
   const clue = CLUES[activeId];
-  const stats = hintStats(state);
-  const canHint = clueAllowsHint(activeId);
-  const locked = canHint && state.nextHintAt && now < toMillis(state.nextHintAt);
-  const showingHint = revealedHintForClue(state, teamKey);
-  el("hintBtn").disabled = !canHint || stats.remaining <= 0 || locked || !clue || showingHint;
-  el("hintsLeft").textContent = canHint ? `Hints left: ${stats.remaining}` : "Hints are disabled for this clue.";
-  el("hintBox").textContent = !clue
-    ? "No active clue."
-    : (!canHint ? (clue.hint || "Hints are disabled for this clue.") : (showingHint ? clue.hint : "No hint displayed yet for this active clue."));
+  const locked = state.nextHintAt && now < toMillis(state.nextHintAt);
+  el("hintBtn").disabled = state.usedHints >= 3 || locked || !clue;
+  el("hintsLeft").textContent = `Hints left: ${3 - state.usedHints}`;
+  el("hintBox").textContent = state.usedHints > 0 && clue ? clue.hint : "No hint displayed yet for this active clue.";
   if (locked){
     el("hintTimerPill").hidden = false;
     el("hintTimerPill").textContent = fmtCountdown(toMillis(state.nextHintAt) - now);
@@ -908,26 +651,18 @@ function renderHint(){
 function renderBoard(){
   const board = el("leaderboard");
   if (!board) return;
-  const rows = boardRows();
   board.innerHTML = "";
-  renderLeadBanner(rows);
-  rows.forEach((row, i) => {
+  boardRows().forEach((row, i) => {
     const place = i + 1;
     const trophy = row.finished ? trophyInfoForPlacement(place) : null;
-    const identity = teamIdentity(row.teamNameRaw || row.teamName, row.key);
     const div = document.createElement("div");
-    div.className = `leaderRow ${identity.mascot.badgeClass}`;
+    div.className = "leaderRow";
     div.innerHTML = `
       <div class="leaderMain">
-        ${trophy ? `<span class="${trophy.className}" aria-label="${trophy.label}">${trophy.icon}</span>` : mascotBadgeMarkup(identity)}
+        ${trophy ? `<span class="${trophy.className}" aria-label="${trophy.label}">${trophy.icon}</span>` : ""}
         <div class="leaderText">
-          <strong>${place}. ${escapeHtml(identity.displayName)}</strong>
-          <div class="leaderSubline">
-            ${mascotBadgeMarkup(identity, { showLabel: true })}
-            <span class="leaderMiniMeta">${escapeHtml(TEAMS[row.key]?.label || row.key)}</span>
-            ${place <= 3 && row.finished ? `<span class="candyBadge">🍬 ${escapeHtml(placementPrizeText(place))}</span>` : ""}
-          </div>
-          <div class="muted">${row.finished ? `${placementLabel(place)} • ${placementPrizeText(place)} at Andy's table` : (TEAMS[row.key]?.sequence?.[row.found] === 11 ? "Final clue unlocked" : "In progress")}</div>
+          <strong>${place}. ${row.teamName}</strong>
+          <div class="muted">${row.finished ? `${placementLabel(place)} • ${placementPrizeText(place)}` : (TEAMS[row.key]?.sequence?.[row.found] === 11 ? "Final clue unlocked" : "In progress")}</div>
         </div>
       </div>
       <div class="leaderRight">
@@ -947,19 +682,9 @@ function renderAdminStatuses(){
     const progress = liveProgressCache[key] || loadLocalState(key) || defaultState(team.label);
     const currentId = team.sequence[progress.progressIndex];
     const current = currentId ? CLUES[currentId] : null;
-    const lastSolvedId = Array.isArray(progress.completed) && progress.completed.length ? progress.completed[progress.completed.length - 1] : null;
-    const lastSolved = lastSolvedId ? CLUES[lastSolvedId] : null;
-    const identity = teamIdentity(progress.teamName, key);
     const row = document.createElement("div");
-    row.className = `adminStatusRow ${identity.mascot.badgeClass}`;
-    row.innerHTML = `
-      <strong>${escapeHtml(identity.displayName)}</strong>
-      <div class="leaderSubline">
-        ${mascotBadgeMarkup(identity, { showLabel: true })}
-        <span class="leaderMiniMeta">${escapeHtml(team.label)}</span>
-      </div>
-      <div class="adminStatusLocation">${progress.finished ? "Finished" : current ? `On clue ${progress.progressIndex + 1}: ${escapeHtml(current.location)}` : "Not started"}</div>
-      <div class="adminStatusMeta">${progress.completed?.length || 0} clues found${lastSolved ? ` • Last cleared: ${escapeHtml(lastSolved.location)}` : ""}</div>`;
+    row.className = "adminStatusRow";
+    row.innerHTML = `<strong>${progress.teamName || team.label}</strong><div class="adminStatusMeta">${progress.finished ? "Finished" : current ? `On clue ${progress.progressIndex + 1}: ${current.location}` : "Not started"}</div><div class="adminStatusMeta">${progress.completed?.length || 0} clues found</div>`;
     mount.appendChild(row);
   });
 }
@@ -982,7 +707,6 @@ async function renderAll(options = {}){
   renderHint();
   renderFinalEggCard();
   renderBoard();
-  updateFinalMissionMode();
   if (shouldPersist) await persistAll();
 }
 
@@ -999,7 +723,6 @@ function applyProgressAdvance(team, targetState, scannedValue){
   targetState.completed.push(finishedStep);
   targetState.scannedTokens.push(scannedValue || expected);
   targetState.progressIndex += 1;
-  targetState.revealedHintClueId = null;
   targetState.lastUpdatedAt = Date.now();
 
   if (isOnFinalClue(targetState, team)) {
@@ -1039,30 +762,9 @@ async function unlockToken(token, options = {}){
 
   const result = applyProgressAdvance(teamKey, state, expected);
   await renderAll();
-  if (result.status === "ready-final-egg") {
-    setPage("choresPage");
-    burstCelebration("success");
-    showMissionOverlay({
-      badge: "🏁 Final mission unlocked",
-      title: "The last riddle is live",
-      copy: "You broke into the final stretch. Head back to the mission board for your last location.",
-      meta: "Only one more egg stands between your team and the candy table."
-    });
-  } else if (result.status === "correct") {
-    const nextId = currentClueId();
-    const nextClue = CLUES[nextId];
-    setPage("choresPage");
-    burstCelebration("success");
-    showMissionOverlay({
-      badge: "✅ Mission unlocked",
-      title: "Nice scan. Next clue unlocked.",
-      copy: nextClue ? nextClue.title : "Your next mission is ready.",
-      meta: "Head back to the mission board and decode the next riddle before another team jumps you."
-    });
-  }
+  if (result.status === "ready-final-egg") setPage("choresPage");
   if (state.finished) {
     setPage("choresPage");
-    burstCelebration("victory");
     showVictoryOverlay();
   }
 
@@ -1084,15 +786,13 @@ function renderFinalEggCard(){
 
   if (!teamKey || !state){
     card.classList.add("hidden");
-    card.classList.remove("finalMissionGlow");
     return;
   }
 
   if (state.finished){
-    card.classList.remove("hidden");
-    card.classList.add("finalMissionGlow");
     const place = finishPlacementForTeam(teamKey) || 1;
     const prizeText = placementPrizeText(place);
+    card.classList.remove("hidden");
     badge.textContent = "🏆 Victory locked";
     title.textContent = `Your team finished in ${placementLabel(place)} and won ${prizeText}.`;
     copy.textContent = `Go to Andy for ${prizeText}. Your placement is locked in and the leaderboard has been updated.`;
@@ -1102,16 +802,14 @@ function renderFinalEggCard(){
 
   if (isOnFinalClue(state, teamKey)){
     card.classList.remove("hidden");
-    card.classList.add("finalMissionGlow");
     badge.textContent = "🥚 Final clue";
     title.textContent = "Your final clue is unlocked.";
-    copy.textContent = "Find the final egg and scan its QR code to finish the hunt. The house is down to one last secret.";
+    copy.textContent = "Find the final egg and scan its QR code to finish the hunt.";
     viewBtn.classList.add("hidden");
     return;
   }
 
   card.classList.add("hidden");
-  card.classList.remove("finalMissionGlow");
 }
 
 function hideVictoryOverlay(){
@@ -1123,8 +821,8 @@ function showVictoryOverlay(){
   if (!teamKey || !state || !state.finished) return;
   const place = finishPlacementForTeam(teamKey) || 1;
   const prizeText = placementPrizeText(place);
-  if (el("victoryTitle")) el("victoryTitle").textContent = `${teamIdentity(state.teamName, teamKey).displayName} found the final egg!`;
-  if (el("victoryPlacement")) el("victoryPlacement").textContent = `Your team came in ${placementLabel(place)} and earned ${prizeText}.`;
+  if (el("victoryTitle")) el("victoryTitle").textContent = `${state.teamName} found the final egg!`;
+  if (el("victoryPlacement")) el("victoryPlacement").textContent = `Your team came in ${placementLabel(place)} and won ${prizeText}.`;
   if (el("victoryRankWord")) el("victoryRankWord").textContent = placementLabel(place).replace(/^./, char => char.toUpperCase());
   if (el("victoryMeta")) el("victoryMeta").textContent = place <= 3
     ? `Go to Andy for your ${prizeText}. The final egg was at ${finalEggInfo().location}. The leaderboard has been updated and your team earned the ${place === 1 ? "gold" : place === 2 ? "silver" : "bronze"} trophy.`
@@ -1502,8 +1200,8 @@ async function syncAdminFields(){
   const team = select.value;
   const remote = await loadRemoteProgress(team);
   const local = loadLocalState(team);
-  const rawName = remote?.teamName || local.teamName || TEAMS[team].label;
-  el("adminTeamName").value = teamIdentity(rawName, team).displayName;
+  const name = remote?.teamName || local.teamName || TEAMS[team].label;
+  el("adminTeamName").value = name;
 }
 
 async function adminSaveTeamName(){
@@ -1515,20 +1213,19 @@ async function adminSaveTeamName(){
   }
 
   let targetState = await loadRemoteProgress(team) || loadLocalState(team);
-  const existingIdentity = teamIdentity(targetState.teamName, team);
-  targetState.teamName = encodeTeamIdentity(newName, existingIdentity.mascotKey, TEAMS[team].label);
+  targetState.teamName = newName;
   if (!targetState.finished) targetState.lastUpdatedAt = Date.now();
   liveProgressCache[team] = { ...targetState };
   localStorage.setItem(storageKey(team), JSON.stringify(targetState));
 
   const localBoard = readJson(leaderboardKey(), {});
-  localBoard[team] = { teamName: targetState.teamName, found: targetState.completed.length, finished: targetState.finished, lastUpdatedAt: targetState.lastUpdatedAt };
+  localBoard[team] = { teamName: newName, found: targetState.completed.length, finished: targetState.finished, lastUpdatedAt: targetState.lastUpdatedAt };
   localStorage.setItem(leaderboardKey(), JSON.stringify(localBoard));
 
   if (supabaseReady){
     await supabaseClient.from("team_progress_sigtau").upsert({
       team_id: team,
-      team_name: targetState.teamName,
+      team_name: newName,
       progress_index: targetState.progressIndex,
       completed: targetState.completed,
       scanned_tokens: targetState.scannedTokens,
@@ -1541,17 +1238,17 @@ async function adminSaveTeamName(){
 
     await supabaseClient.from("leaderboard_sigtau").upsert({
       team_id: team,
-      team_name: targetState.teamName,
+      team_name: newName,
       found: targetState.completed.length,
       finished: targetState.finished,
       last_updated_at: targetState.lastUpdatedAt
     }, { onConflict: "team_id" });
 
-    liveBoardCache[team] = { team_id: team, team_name: targetState.teamName, found: targetState.completed.length, finished: targetState.finished, last_updated_at: targetState.lastUpdatedAt };
+    liveBoardCache[team] = { team_id: team, team_name: newName, found: targetState.completed.length, finished: targetState.finished, last_updated_at: targetState.lastUpdatedAt };
   }
 
   if (teamKey === team && state){
-    state.teamName = targetState.teamName;
+    state.teamName = newName;
     await renderAll({ persist: false });
   } else {
     renderBoard();
@@ -1564,8 +1261,6 @@ async function adminSaveTeamName(){
 async function adminResetTeam(){
   const team = el("adminTeamSelect").value;
   const fresh = defaultState(TEAMS[team].label);
-  fresh.startedAt = Date.now();
-  fresh.lastUpdatedAt = fresh.startedAt;
   liveProgressCache[team] = { ...fresh };
   localStorage.setItem(storageKey(team), JSON.stringify(fresh));
 
@@ -1598,15 +1293,16 @@ async function adminResetTeam(){
     liveBoardCache[team] = { team_id: team, team_name: fresh.teamName, found: 0, finished: false, last_updated_at: fresh.lastUpdatedAt };
   }
 
-  if (rememberedTeam() === team){
-    releaseTeamSelection("That team was reset. Pick a team to join again.");
+  if (teamKey === team){
+    state = fresh;
+    await renderAll({ persist: false });
   } else {
     renderBoard();
   }
 
   await syncAdminFields();
   maybeRefreshGateSelection();
-  el("adminPanelFeedback").textContent = supabaseReady ? "Selected team reset everywhere and cleared from remembered devices." : "Selected team reset on this device only.";
+  el("adminPanelFeedback").textContent = supabaseReady ? "Selected team reset everywhere." : "Selected team reset on this device only.";
 }
 
 
@@ -1696,85 +1392,13 @@ async function adminGrantNext(){
 }
 
 
-async function adminGrantHint(){
-  const team = el("adminTeamSelect").value;
-  let targetState = await loadRemoteProgress(team) || loadLocalState(team);
-  targetState.usedHints = Number(targetState.usedHints || 0) - 1;
-  targetState.nextHintAt = null;
-  targetState.lastUpdatedAt = Date.now();
-
-  localStorage.setItem(storageKey(team), JSON.stringify(targetState));
-  liveProgressCache[team] = { ...targetState };
-
-  if (supabaseReady) {
-    await supabaseClient.from("team_progress_sigtau").upsert({
-      team_id: team,
-      team_name: targetState.teamName,
-      progress_index: targetState.progressIndex,
-      completed: targetState.completed,
-      scanned_tokens: targetState.scannedTokens,
-      used_hints: targetState.usedHints,
-      next_hint_at: targetState.nextHintAt,
-      finished: targetState.finished,
-      started_at: targetState.startedAt,
-      last_updated_at: targetState.lastUpdatedAt
-    }, { onConflict: "team_id" });
-  }
-
-  if (teamKey === team){
-    state = targetState;
-    await renderAll({ persist: false });
-  } else {
-    renderAdminStatuses();
-  }
-
-  await syncAdminFields();
-  const stats = hintStats(targetState);
-  el("adminPanelFeedback").textContent = `${TEAMS[team].label} now has ${stats.remaining} hint${stats.remaining === 1 ? "" : "s"} available.`;
-}
-
-async function adminSkipHintTimer(){
-  const team = el("adminTeamSelect").value;
-  let targetState = await loadRemoteProgress(team) || loadLocalState(team);
-  targetState.nextHintAt = null;
-  targetState.lastUpdatedAt = Date.now();
-
-  localStorage.setItem(storageKey(team), JSON.stringify(targetState));
-  liveProgressCache[team] = { ...targetState };
-
-  if (supabaseReady) {
-    await supabaseClient.from("team_progress_sigtau").upsert({
-      team_id: team,
-      team_name: targetState.teamName,
-      progress_index: targetState.progressIndex,
-      completed: targetState.completed,
-      scanned_tokens: targetState.scannedTokens,
-      used_hints: targetState.usedHints,
-      next_hint_at: targetState.nextHintAt,
-      finished: targetState.finished,
-      started_at: targetState.startedAt,
-      last_updated_at: targetState.lastUpdatedAt
-    }, { onConflict: "team_id" });
-  }
-
-  if (teamKey === team){
-    state = targetState;
-    await renderAll({ persist: false });
-  } else {
-    renderAdminStatuses();
-  }
-
-  await syncAdminFields();
-  el("adminPanelFeedback").textContent = `${TEAMS[team].label} can use its next hint immediately.`;
-}
-
-
 async function adminResetAll(){
   if (!window.confirm("Reset the full game for every team?")) return;
   const nowTs = Date.now();
   const boardReset = {};
   for (const [team, meta] of Object.entries(TEAMS)) {
-    const fresh = defaultState(meta.label);
+    const existing = liveProgressCache[team] || loadLocalState(team) || defaultState(meta.label);
+    const fresh = defaultState(existing.teamName || meta.label);
     fresh.startedAt = nowTs;
     fresh.lastUpdatedAt = nowTs;
     localStorage.setItem(storageKey(team), JSON.stringify(fresh));
@@ -1792,8 +1416,9 @@ async function adminResetAll(){
   localStorage.setItem(leaderboardKey(), JSON.stringify(boardReset));
   setLocalMapEnabled(true);
   if (supabaseReady) await pushSharedSettings();
-  releaseTeamSelection("The full game was reset. Pick a team to join again.");
-  if (el("adminPanelFeedback")) el("adminPanelFeedback").textContent = "Full game reset for every team and remembered team choices were cleared.";
+  if (teamKey && TEAMS[teamKey]) state = loadLocalState(teamKey);
+  await renderAll({ persist: false });
+  if (el("adminPanelFeedback")) el("adminPanelFeedback").textContent = "Full game reset for every team.";
 }
 
 async function adminToggleMap(){
@@ -1843,7 +1468,8 @@ function wireAdminTrigger(node){
 
 function wireAdminEvents(){
   wireAdminTrigger(el("rabbitTrigger"));
-  wireAdminTrigger(el("gateRabbitTrigger"));
+  wireAdminTrigger(el("adminOpenBtn"));
+  wireAdminTrigger(el("gateAdminBtn"));
 
   if (el("adminCloseX")) el("adminCloseX").addEventListener("click", hideAdminOverlay);
   if (el("adminPanelCloseX")) el("adminPanelCloseX").addEventListener("click", hideAdminPanel);
@@ -1865,19 +1491,13 @@ function wireAdminEvents(){
   if (el("adminTeamSelect")) el("adminTeamSelect").addEventListener("change", syncAdminFields);
   if (el("adminSaveNameBtn")) el("adminSaveNameBtn").addEventListener("click", adminSaveTeamName);
   if (el("adminGrantNextBtn")) el("adminGrantNextBtn").addEventListener("click", adminGrantNext);
-  if (el("adminGrantHintBtn")) el("adminGrantHintBtn").addEventListener("click", adminGrantHint);
-  if (el("adminSkipHintTimerBtn")) el("adminSkipHintTimerBtn").addEventListener("click", adminSkipHintTimer);
   if (el("adminToggleMapBtn")) el("adminToggleMapBtn").addEventListener("click", adminToggleMap);
   if (el("adminResetTeamBtn")) el("adminResetTeamBtn").addEventListener("click", adminResetTeam);
   if (el("adminResetAllBtn")) el("adminResetAllBtn").addEventListener("click", adminResetAll);
   if (el("adminReloadTeamBtn")) el("adminReloadTeamBtn").addEventListener("click", adminReloadTeam);
-  if (el("missionCloseX")) el("missionCloseX").addEventListener("click", hideMissionOverlay);
-  if (el("missionOverlay")) el("missionOverlay").addEventListener("click", e => { if (e.target === el("missionOverlay")) hideMissionOverlay(); });
   if (el("victoryCloseX")) el("victoryCloseX").addEventListener("click", hideVictoryOverlay);
   if (el("victoryLeaderboardBtn")) el("victoryLeaderboardBtn").addEventListener("click", () => {
     hideVictoryOverlay();
-  hideMissionOverlay();
-  applyTeamTheme(encodeTeamIdentity("Sig Tau", DEFAULT_MASCOT, "Sig Tau"), null);
     setPage("mapPage");
   });
   if (el("victoryOverlay")) el("victoryOverlay").addEventListener("click", e => { if (e.target === el("victoryOverlay")) hideVictoryOverlay(); });
@@ -1929,11 +1549,9 @@ if (el("startGameBtn")) {
     const remote = await loadRemoteProgress(teamKey);
     if (remote) loaded = remote;
     state = loaded;
-    const selectedMascot = normalizeMascotKey(el("gateMascotSelect")?.value || DEFAULT_MASCOT);
-    state.teamName = claimedName || encodeTeamIdentity(enteredName || teamIdentity(state.teamName, teamKey).displayName || TEAMS[teamKey].label, selectedMascot, TEAMS[teamKey].label);
-    if (!state.startedAt) state.startedAt = Date.now();
+    state.teamName = claimedName || enteredName || state.teamName || TEAMS[teamKey].label;
+    rememberTeam(teamKey);
     if (!state.lastUpdatedAt) state.lastUpdatedAt = Date.now();
-    rememberTeam(teamKey, state.startedAt);
     el("teamGate").classList.add("hidden");
     await renderAll();
   });
@@ -1942,13 +1560,10 @@ if (el("startGameBtn")) {
 if (el("hintBtn")) {
   el("hintBtn").addEventListener("click", async () => {
     if (!state) return;
-    const activeId = currentClueId();
-    const stats = hintStats(state);
-    const locked = clueAllowsHint(activeId) && state.nextHintAt && now < toMillis(state.nextHintAt);
-    if (!clueAllowsHint(activeId) || stats.remaining <= 0 || locked) return;
+    const locked = state.nextHintAt && now < toMillis(state.nextHintAt);
+    if (state.usedHints >= 3 || locked) return;
     state.usedHints += 1;
-    state.revealedHintClueId = activeId;
-    state.nextHintAt = hintStats(state).remaining <= 0 ? null : Date.now() + COOLDOWN_MINUTES * 60 * 1000;
+    state.nextHintAt = state.usedHints >= 3 ? null : Date.now() + COOLDOWN_MINUTES * 60 * 1000;
     state.lastUpdatedAt = Date.now();
     await renderAll();
   });
@@ -1961,25 +1576,15 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("beforeunload", stopCamera);
 
 async function autoResumeRememberedTeam(){
-  const remembered = rememberedTeamRecord();
-  if (!remembered) return false;
-  const saved = remembered.team;
-  const remote = await loadRemoteProgress(saved);
-  if (remote && Number(remembered.startedAt || 0) > 0 && Number(remote.startedAt || 0) > 0 && Number(remembered.startedAt) !== Number(remote.startedAt)) {
-    clearRememberedTeam(saved);
-    renderGateTeams(null);
-    setGateNameLock(false, "");
-    return false;
-  }
+  const saved = rememberedTeam();
+  if (!saved) return false;
   teamKey = saved;
+  const remote = await loadRemoteProgress(saved);
   state = remote || loadLocalState(saved);
-  if (!state.startedAt) state.startedAt = Date.now();
   if (!state.lastUpdatedAt) state.lastUpdatedAt = Date.now();
   renderGateTeams(saved);
-  populateMascotOptions(teamIdentity(state.teamName, saved).mascotKey);
   setGateNameLock(true, state.teamName || TEAMS[saved].label);
   if (el("teamGate")) el("teamGate").classList.add("hidden");
-  rememberTeam(saved, state.startedAt);
   await renderAll();
   return true;
 }
@@ -2001,7 +1606,6 @@ async function refreshSharedData(){
 (async function boot(){
   await initSupabase();
   renderGateTeams(null);
-  populateMascotOptions();
   setGateNameLock(false, "");
   renderBoard();
   updateSharedModeText();
