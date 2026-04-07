@@ -298,42 +298,6 @@ function getCachedClaimedTeamName(team){
   return null;
 }
 
-let syncPollInterval = null;
-
-function resolveSupabaseConfig(){
-  const cfg = window.SUPABASE_CONFIG && typeof window.SUPABASE_CONFIG === "object"
-    ? { url: window.SUPABASE_CONFIG.url, anonKey: window.SUPABASE_CONFIG.anonKey }
-    : null;
-  const fallback = {
-    url: window.SUPABASE_URL,
-    anonKey: window.SUPABASE_ANON_KEY
-  };
-  const chosen = (cfg && cfg.url && cfg.anonKey) ? cfg : fallback;
-  if (!chosen.url || !chosen.anonKey) return null;
-  if (String(chosen.url).startsWith("PASTE_")) return null;
-  return chosen;
-}
-
-function startSyncPolling(){
-  if (syncPollInterval) clearInterval(syncPollInterval);
-  if (!supabaseReady) return;
-  syncPollInterval = setInterval(async () => {
-    if (!supabaseReady) return;
-    try {
-      await Promise.all([fetchLeaderboard(), fetchAllRemoteProgress()]);
-    } catch (error) {
-      console.error(error);
-    }
-  }, 4000);
-}
-
-function stopSyncPolling(){
-  if (syncPollInterval) {
-    clearInterval(syncPollInterval);
-    syncPollInterval = null;
-  }
-}
-
 function updateSharedModeText(){
   const mode = el("sharedModeText");
   if (!mode) return;
@@ -344,14 +308,24 @@ function updateSharedModeText(){
   } else {
     mode.hidden = false;
     mode.style.display = "block";
-    mode.textContent = "Cross-device sync is off. Check supabase-config.js and the Sig Tau Supabase tables.";
+    mode.textContent = "Cross-device sync needs Supabase configured in supabase-config.js.";
   }
+}
+
+function resolvedSupabaseConfig(){
+  if (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.url && window.SUPABASE_CONFIG.anonKey) {
+    return { url: window.SUPABASE_CONFIG.url, anonKey: window.SUPABASE_CONFIG.anonKey };
+  }
+  if (window.SUPABASE_URL && window.SUPABASE_ANON_KEY) {
+    return { url: window.SUPABASE_URL, anonKey: window.SUPABASE_ANON_KEY };
+  }
+  return null;
 }
 
 async function initSupabase(){
   try{
-    const supabaseConfig = resolveSupabaseConfig();
-    if (!supabaseConfig){
+    const cfg = resolvedSupabaseConfig();
+    if (!cfg || !cfg.url || !cfg.anonKey || cfg.url.startsWith("PASTE_")){
       if (el("leaderboardModeText")){
         el("leaderboardModeText").textContent = "Using local device leaderboard only.";
         el("leaderboardModeText").hidden = false;
@@ -361,7 +335,7 @@ async function initSupabase(){
       renderBoard();
       return;
     }
-    supabaseClient = window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey);
+    supabaseClient = window.supabase.createClient(cfg.url, cfg.anonKey);
     supabaseReady = true;
     if (el("leaderboardModeText")){
       el("leaderboardModeText").textContent = "";
@@ -372,11 +346,9 @@ async function initSupabase(){
     await Promise.all([fetchLeaderboard(), fetchAllRemoteProgress()]);
     subscribeLeaderboard();
     subscribeTeamProgress();
-    startSyncPolling();
   } catch (error){
     console.error(error);
     supabaseReady = false;
-    stopSyncPolling();
     if (el("leaderboardModeText")){
       el("leaderboardModeText").textContent = "Using local device leaderboard only.";
       el("leaderboardModeText").hidden = false;
@@ -393,7 +365,6 @@ async function fetchLeaderboard(){
   if (error){
     console.error(error);
     supabaseReady = false;
-    stopSyncPolling();
     if (el("leaderboardModeText")){
       el("leaderboardModeText").textContent = "Using local device leaderboard only.";
       el("leaderboardModeText").hidden = false;
@@ -1591,7 +1562,7 @@ async function autoResumeRememberedTeam(){
 
 async function refreshSharedData(){
   if (!supabaseReady) return;
-  await fetchRemoteBoard();
+  await fetchLeaderboard();
   await fetchAllRemoteProgress();
   if (teamKey) {
     const remote = await loadRemoteProgress(teamKey);
@@ -1623,6 +1594,6 @@ async function refreshSharedData(){
       renderFinalEggCard();
     }
   }, 1000);
-  setInterval(() => { refreshSharedData().catch(console.error); }, 5000);
+  setInterval(() => { refreshSharedData().catch(console.error); }, 3000);
   window.addEventListener("focus", () => { refreshSharedData().catch(console.error); });
 })();
