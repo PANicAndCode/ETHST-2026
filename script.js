@@ -553,8 +553,6 @@ function cachedRemoteProgress(team){
 function getCachedClaimedTeamName(team){
   const remoteProgress = cachedRemoteProgress(team);
   if (remoteProgress && hasTeamBeenClaimed(remoteProgress, team)) return remoteProgress.teamName;
-  const boardRow = liveBoardCache[team];
-  if (boardRow && Number(boardRow.last_updated_at || 0) > 0) return boardRow.team_name;
   const rawLocal = localStorage.getItem(storageKey(team));
   if (rawLocal){
     const local = readJson(storageKey(team), null);
