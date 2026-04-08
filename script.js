@@ -6,6 +6,7 @@ const REMEMBERED_TEAM_STARTED_KEY = `${STORAGE_PREFIX}-remembered-team-started`;
 const ADMIN_PASSCODE = "bunnyboss";
 const TEAM_IDENTITY_SEPARATOR = "|||";
 const DEFAULT_MASCOT = "rabbit";
+const SUPABASE_REQUEST_TIMEOUT_MS = 3500;
 const MASCOTS = {
   rabbit: { label: "Rabbits", emoji: "🐰", badgeClass: "mascot-rabbit" },
   knight: { label: "Knights", emoji: "🛡️", badgeClass: "mascot-knight" },
@@ -576,6 +577,22 @@ function updateSharedModeText(){
   }
 }
 
+async function withSupabaseTimeout(promise, fallbackValue, label){
+  const result = await Promise.race([
+    Promise.resolve(promise)
+      .then(value => ({ status: "fulfilled", value }))
+      .catch(error => ({ status: "rejected", error })),
+    new Promise(resolve => setTimeout(() => resolve({ status: "timeout" }), SUPABASE_REQUEST_TIMEOUT_MS))
+  ]);
+
+  if (result.status === "fulfilled") return result.value;
+  if (result.status === "timeout") {
+    console.warn(`${label} timed out after ${SUPABASE_REQUEST_TIMEOUT_MS}ms.`);
+    return fallbackValue;
+  }
+  throw result.error;
+}
+
 async function initSupabase(){
   try{
     const cfg = (window.SUPABASE_CONFIG && typeof window.SUPABASE_CONFIG === "object") ? window.SUPABASE_CONFIG : {};
@@ -617,8 +634,17 @@ async function initSupabase(){
 
 async function fetchLeaderboard(){
   if (!supabaseReady) return;
-  const { data, error } = await supabaseClient.from("leaderboard_sigtau").select("*");
+  const response = await withSupabaseTimeout(
+    supabaseClient.from("leaderboard_sigtau").select("*"),
+    { data: null, error: { message: "timeout" } },
+    "Fetching leaderboard"
+  );
+  const { data, error } = response || {};
   if (error){
+    if (error.message === "timeout") {
+      renderBoard();
+      return;
+    }
     console.error(error);
     supabaseReady = false;
     if (el("leaderboardModeText")){
@@ -637,8 +663,14 @@ async function fetchLeaderboard(){
 
 async function fetchAllRemoteProgress(){
   if (!supabaseReady) return;
-  const { data, error } = await supabaseClient.from("team_progress_sigtau").select("*");
+  const response = await withSupabaseTimeout(
+    supabaseClient.from("team_progress_sigtau").select("*"),
+    { data: null, error: { message: "timeout" } },
+    "Fetching shared team progress"
+  );
+  const { data, error } = response || {};
   if (error){
+    if (error.message === "timeout") return;
     console.error(error);
     return;
   }
@@ -719,8 +751,14 @@ async function loadRemoteProgress(team){
   if (!supabaseReady) return null;
   const cached = cachedRemoteProgress(team);
   if (cached) return cached;
-  const { data, error } = await supabaseClient.from("team_progress_sigtau").select("*").eq("team_id", team).maybeSingle();
+  const response = await withSupabaseTimeout(
+    supabaseClient.from("team_progress_sigtau").select("*").eq("team_id", team).maybeSingle(),
+    { data: null, error: { message: "timeout" } },
+    `Loading shared progress for ${team}`
+  );
+  const { data, error } = response || {};
   if (error){
+    if (error.message === "timeout") return null;
     console.error(error);
     return null;
   }
@@ -1598,9 +1636,8 @@ async function adminResetTeam(){
 
   if (rememberedTeam() === team){
     releaseTeamSelection("That team was reset. Pick a team to join again.");
-  } 
-  renderBoard();
   }
+  renderBoard();
 
   await syncAdminFields();
   maybeRefreshGateSelection();
@@ -1998,7 +2035,6 @@ async function refreshSharedData(){
 }
 
 (async function boot(){
-  await initSupabase();
   renderGateTeams(null);
   populateMascotOptions();
   setGateNameLock(false, "");
@@ -2009,7 +2045,20 @@ async function refreshSharedData(){
   setPage("choresPage");
   wireAdminEvents();
   wireScannerEvents();
-  await autoResumeRememberedTeam();
+  try {
+    await initSupabase();
+  } catch (error){
+    console.error(error);
+    supabaseReady = false;
+    updateSharedModeText();
+    renderBoard();
+  }
+  try {
+    await autoResumeRememberedTeam();
+  } catch (error){
+    console.error(error);
+    releaseTeamSelection("We could not restore the saved team. Pick a team to join again.");
+  }
   setInterval(() => {
     now = Date.now();
     if (state){
