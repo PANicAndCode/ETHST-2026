@@ -6,7 +6,6 @@ const REMEMBERED_TEAM_STARTED_KEY = `${STORAGE_PREFIX}-remembered-team-started`;
 const ADMIN_PASSCODE = "bunnyboss";
 const TEAM_IDENTITY_SEPARATOR = "|||";
 const DEFAULT_MASCOT = "rabbit";
-const SUPABASE_REQUEST_TIMEOUT_MS = 3500;
 const MASCOTS = {
   rabbit: { label: "Rabbits", emoji: "🐰", badgeClass: "mascot-rabbit" },
   knight: { label: "Knights", emoji: "🛡️", badgeClass: "mascot-knight" },
@@ -575,22 +574,6 @@ function updateSharedModeText(){
   }
 }
 
-async function withSupabaseTimeout(promise, fallbackValue, label){
-  const result = await Promise.race([
-    Promise.resolve(promise)
-      .then(value => ({ status: "fulfilled", value }))
-      .catch(error => ({ status: "rejected", error })),
-    new Promise(resolve => setTimeout(() => resolve({ status: "timeout" }), SUPABASE_REQUEST_TIMEOUT_MS))
-  ]);
-
-  if (result.status === "fulfilled") return result.value;
-  if (result.status === "timeout") {
-    console.warn(`${label} timed out after ${SUPABASE_REQUEST_TIMEOUT_MS}ms.`);
-    return fallbackValue;
-  }
-  throw result.error;
-}
-
 async function initSupabase(){
   try{
     const cfg = (window.SUPABASE_CONFIG && typeof window.SUPABASE_CONFIG === "object") ? window.SUPABASE_CONFIG : {};
@@ -614,7 +597,7 @@ async function initSupabase(){
       el("leaderboardModeText").style.display = "none";
     }
     updateSharedModeText();
-    await Promise.all([fetchLeaderboard(), fetchAllRemoteProgress()]);
+    await Promise.allSettled([fetchLeaderboard(), fetchAllRemoteProgress()]);
     subscribeLeaderboard();
     subscribeTeamProgress();
   } catch (error){
@@ -632,26 +615,9 @@ async function initSupabase(){
 
 async function fetchLeaderboard(){
   if (!supabaseReady) return;
-  const response = await withSupabaseTimeout(
-    supabaseClient.from("leaderboard_sigtau").select("*"),
-    { data: null, error: { message: "timeout" } },
-    "Fetching leaderboard"
-  );
-  const { data, error } = response || {};
+  const { data, error } = await supabaseClient.from("leaderboard_sigtau").select("*");
   if (error){
-    if (error.message === "timeout") {
-      renderBoard();
-      return;
-    }
     console.error(error);
-    supabaseReady = false;
-    if (el("leaderboardModeText")){
-      el("leaderboardModeText").textContent = "Using local device leaderboard only.";
-      el("leaderboardModeText").hidden = false;
-      el("leaderboardModeText").style.display = "block";
-    }
-    updateSharedModeText();
-    renderBoard();
     return;
   }
   liveBoardCache = {};
@@ -661,14 +627,8 @@ async function fetchLeaderboard(){
 
 async function fetchAllRemoteProgress(){
   if (!supabaseReady) return;
-  const response = await withSupabaseTimeout(
-    supabaseClient.from("team_progress_sigtau").select("*"),
-    { data: null, error: { message: "timeout" } },
-    "Fetching shared team progress"
-  );
-  const { data, error } = response || {};
+  const { data, error } = await supabaseClient.from("team_progress_sigtau").select("*");
   if (error){
-    if (error.message === "timeout") return;
     console.error(error);
     return;
   }
@@ -749,14 +709,8 @@ async function loadRemoteProgress(team){
   if (!supabaseReady) return null;
   const cached = cachedRemoteProgress(team);
   if (cached) return cached;
-  const response = await withSupabaseTimeout(
-    supabaseClient.from("team_progress_sigtau").select("*").eq("team_id", team).maybeSingle(),
-    { data: null, error: { message: "timeout" } },
-    `Loading shared progress for ${team}`
-  );
-  const { data, error } = response || {};
+  const { data, error } = await supabaseClient.from("team_progress_sigtau").select("*").eq("team_id", team).maybeSingle();
   if (error){
-    if (error.message === "timeout") return null;
     console.error(error);
     return null;
   }
