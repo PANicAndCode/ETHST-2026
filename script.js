@@ -148,8 +148,7 @@ function teamIdentity(rawValue, team = teamKey){
 
 function hasTeamBeenClaimed(progress, team){
   if (!progress) return false;
-  return Number(progress.startedAt || 0) > 0
-    || Number(progress.progressIndex || 0) > 0
+  return Number(progress.progressIndex || 0) > 0
     || (Array.isArray(progress.completed) && progress.completed.length > 0)
     || !!progress.finished;
 }
@@ -842,13 +841,15 @@ function renderGateTeams(selected){
     btn.className = "teamBtn" + (key === selected ? " selected" : "");
     btn.textContent = team.label;
     btn.addEventListener("click", async () => {
-      teamKey = key;
+      const selectedTeam = key;
+      teamKey = selectedTeam;
       renderGateTeams(teamKey);
-      const claimedName = await getClaimedTeamName(teamKey);
+      const claimedName = await getClaimedTeamName(selectedTeam);
+      if (teamKey !== selectedTeam) return;
       if (claimedName) {
         setGateNameLock(true, claimedName);
       } else {
-        const local = loadLocalState(teamKey);
+        const local = loadLocalState(selectedTeam);
         setGateNameLock(false, local?.teamName || team.label);
       }
     });
