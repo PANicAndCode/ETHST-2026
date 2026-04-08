@@ -740,7 +740,7 @@ async function getClaimedTeamName(team){
   const cached = getCachedClaimedTeamName(team);
   if (cached) return cached;
   const remote = await loadRemoteProgress(team);
-  if (remote && remote.teamName && remote.teamName !== TEAMS[team].label) return remote.teamName;
+  if (remote && hasTeamBeenClaimed(remote, team)) return remote.teamName;
   return null;
 }
 
@@ -1598,8 +1598,8 @@ async function adminResetTeam(){
 
   if (rememberedTeam() === team){
     releaseTeamSelection("That team was reset. Pick a team to join again.");
-  } else {
-    renderBoard();
+  } 
+  renderBoard();
   }
 
   await syncAdminFields();
@@ -1777,6 +1777,7 @@ async function adminResetAll(){
     localStorage.setItem(storageKey(team), JSON.stringify(fresh));
     liveProgressCache[team] = { ...fresh };
     boardReset[team] = { teamName: fresh.teamName, found: 0, finished: false, lastUpdatedAt: 0 };
+    liveBoardCache[team] = { team_id: team, team_name: fresh.teamName, found: 0, finished: false, last_updated_at: 0 };
     if (supabaseReady) {
       await supabaseClient.from("team_progress_sigtau").upsert({
         team_id: team, team_name: fresh.teamName, progress_index: 0, completed: [], scanned_tokens: [], used_hints: 0, next_hint_at: null, finished: false, started_at: fresh.startedAt, last_updated_at: fresh.lastUpdatedAt
@@ -1790,6 +1791,7 @@ async function adminResetAll(){
   setLocalMapEnabled(true);
   if (supabaseReady) await pushSharedSettings();
   releaseTeamSelection("The full game was reset. Pick a team to join again.");
+  renderBoard();
   if (el("adminPanelFeedback")) el("adminPanelFeedback").textContent = "Full game reset for every team and remembered team choices were cleared.";
 }
 
