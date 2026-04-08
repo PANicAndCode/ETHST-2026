@@ -148,9 +148,10 @@ function teamIdentity(rawValue, team = teamKey){
 
 function hasTeamBeenClaimed(progress, team){
   if (!progress) return false;
-  const joined = Number(progress.startedAt || 0) > 0 || Number(progress.progressIndex || 0) > 0 || (Array.isArray(progress.completed) && progress.completed.length > 0) || !!progress.finished;
-  const identity = teamIdentity(progress.teamName, team);
-  return joined || identity.displayName !== TEAMS[team].label || identity.mascotKey !== DEFAULT_MASCOT;
+  return Number(progress.startedAt || 0) > 0
+    || Number(progress.progressIndex || 0) > 0
+    || (Array.isArray(progress.completed) && progress.completed.length > 0)
+    || !!progress.finished;
 }
 
 function mascotBadgeMarkup(identity, opts = {}){
