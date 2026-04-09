@@ -43,8 +43,37 @@ create policy "progress_sigtau insert" on public.team_progress_sigtau for insert
 drop policy if exists "progress_sigtau update" on public.team_progress_sigtau;
 create policy "progress_sigtau update" on public.team_progress_sigtau for update to anon using (true) with check (true);
 
-alter publication supabase_realtime add table public.leaderboard_sigtau;
-alter publication supabase_realtime add table public.team_progress_sigtau;
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication p
+    join pg_publication_rel pr on pr.prpubid = p.oid
+    join pg_class c on c.oid = pr.prrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where p.pubname = 'supabase_realtime'
+      and n.nspname = 'public'
+      and c.relname = 'leaderboard_sigtau'
+  ) then
+    alter publication supabase_realtime add table public.leaderboard_sigtau;
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication p
+    join pg_publication_rel pr on pr.prpubid = p.oid
+    join pg_class c on c.oid = pr.prrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where p.pubname = 'supabase_realtime'
+      and n.nspname = 'public'
+      and c.relname = 'team_progress_sigtau'
+  ) then
+    alter publication supabase_realtime add table public.team_progress_sigtau;
+  end if;
+end $$;
 
 insert into public.team_progress_sigtau
   (team_id, team_name, sequence, progress_index, completed, scanned_tokens, used_hints, next_hint_at, finished, started_at, last_updated_at, map_enabled)
