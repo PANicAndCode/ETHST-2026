@@ -26,30 +26,38 @@
         </div>
       </div>
       <h1 class="gateTitle">Welcome to the Sig Tau Easter Treasure Hunt</h1>
-      <p class="gateCopy">Choose your team, claim a mascot, and start the race. This device will remember your team after the first join.</p>
-      <div class="small gatePrompt" id="gateSelectionStatus">Choose a team to unlock your mascot roster.</div>
-      <div class="teamButtons" id="gateTeamButtons"></div>
-      <div class="spacer"></div>
-      <div class="gateIdentityGrid">
-        <div>
-          <label class="small" for="gateTeamName">Team name</label>
-          <input id="gateTeamName" placeholder="Enter team name">
-        </div>
-        <div>
-          <label class="small" for="gateMascotSelect">Mascot</label>
-          <select id="gateMascotSelect" class="visuallyHidden"></select>
-          <div id="gateMascotCards" class="mascotCardGrid" role="listbox" aria-label="Mascot choices"></div>
-        </div>
+      <p class="gateCopy">Create a team with a mascot and a random clue order, or join one that already exists. This device will remember its team after the first join.</p>
+      <div class="gateModeSwitch" id="gateModeSwitch">
+        <button type="button" class="gateModeBtn active" id="gateModeJoinBtn">Join a team</button>
+        <button type="button" class="gateModeBtn" id="gateModeCreateBtn">Create a team</button>
       </div>
-      <div class="spacer"></div>
-      <div id="gateMascotPreview" class="mascotPreviewCard"></div>
+      <div class="small gatePrompt" id="gateSelectionStatus">Choose an existing team to join.</div>
+      <div class="gateJoinWrap" id="gateJoinWrap">
+        <div class="teamButtons" id="gateTeamButtons"></div>
+        <div class="small emptyJoinNote hidden" id="emptyJoinNote">No teams have been created yet. Switch to Create a team to start the hunt.</div>
+      </div>
+      <div class="gateCreateWrap hidden" id="gateCreateWrap">
+        <div class="spacer"></div>
+        <div class="gateIdentityGrid">
+          <div>
+            <label class="small" for="gateTeamName">Team name</label>
+            <input id="gateTeamName" placeholder="Enter team name">
+          </div>
+          <div>
+            <label class="small" for="gateMascotSelect">Mascot</label>
+            <select id="gateMascotSelect" class="visuallyHidden"></select>
+            <div id="gateMascotCards" class="mascotCardGrid" role="listbox" aria-label="Mascot choices"></div>
+          </div>
+        </div>
+        <div class="spacer"></div>
+        <div id="gateMascotPreview" class="mascotPreviewCard"></div>
+      </div>
       <div class="spacer"></div>
       <div class="gateDeviceTools">
-        <div class="note gateDeviceNote" id="gateDeviceNote">This phone will remember its team until you tell it to leave this device.</div>
-        <button class="full" id="gateLeaveDeviceBtn" type="button">Leave this device</button>
+        <div class="note gateDeviceNote" id="gateDeviceNote">This phone will remember its team after an admin approves leaving the device.</div>
       </div>
       <div class="spacer"></div>
-      <button class="primary full" id="startGameBtn">Start hunt</button>
+      <button class="primary full" id="startGameBtn">Join hunt</button>
     </div>
   </div>
 
@@ -83,6 +91,7 @@
         <button class="primary full" id="adminSaveNameBtn">Save team name</button>
         <button class="full" id="adminReloadTeamBtn">Reload team progress</button>
         <button class="full" id="adminCopySnapshotBtn">Copy status snapshot</button>
+        <button class="full" id="adminLeaveDeviceBtn">Leave this device</button>
         <button class="primary full" id="adminGrantNextBtn">Grant next clue</button>
         <button class="full" id="adminGrantHintBtn">Grant 1 extra hint</button>
         <button class="full" id="adminSkipHintTimerBtn">Skip hint timer</button>
@@ -141,7 +150,6 @@
       </div>
       <div class="commandActions">
         <div class="syncBadge syncPending" id="syncBadge">Connecting to shared game...</div>
-        <button class="buttonLike hidden" id="leaveDeviceBtn" type="button">Leave this device</button>
       </div>
     </div>
   </div>
@@ -273,7 +281,9 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-  <script src="script.js"></script>
-  <script src="immersive.js"></script>
+  <script src="script-part-1.js"></script>
+  <script src="script-part-2.js"></script>
+  <script src="script-part-3.js"></script>
+  <script src="script-part-4.js"></script>
 </body>
 </html>
