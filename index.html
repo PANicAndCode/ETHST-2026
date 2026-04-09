@@ -11,8 +11,23 @@
     <div class="gateCard">
       <button type="button" id="gateRabbitTrigger" class="gateRabbitBtn" aria-label="Admin access">🐰</button>
       <div class="badge bigBadge">🐣 Pick your team</div>
+      <div class="gateStepRail">
+        <div class="gateStep">
+          <span>1</span>
+          <div><strong>Claim a team</strong><small>Pick the squad for this device.</small></div>
+        </div>
+        <div class="gateStep">
+          <span>2</span>
+          <div><strong>Name the crew</strong><small>Choose a mascot and rally name.</small></div>
+        </div>
+        <div class="gateStep">
+          <span>3</span>
+          <div><strong>Start the hunt</strong><small>Scan the right egg and race the house.</small></div>
+        </div>
+      </div>
       <h1 class="gateTitle">Welcome to the Sig Tau Easter Treasure Hunt</h1>
       <p class="gateCopy">Choose your team, claim a mascot, and start the race. This device will remember your team after the first join.</p>
+      <div class="small gatePrompt" id="gateSelectionStatus">Choose a team to unlock your mascot roster.</div>
       <div class="teamButtons" id="gateTeamButtons"></div>
       <div class="spacer"></div>
       <div class="gateIdentityGrid">
@@ -22,11 +37,17 @@
         </div>
         <div>
           <label class="small" for="gateMascotSelect">Mascot</label>
-          <select id="gateMascotSelect"></select>
+          <select id="gateMascotSelect" class="visuallyHidden"></select>
+          <div id="gateMascotCards" class="mascotCardGrid" role="listbox" aria-label="Mascot choices"></div>
         </div>
       </div>
       <div class="spacer"></div>
       <div id="gateMascotPreview" class="mascotPreviewCard"></div>
+      <div class="spacer"></div>
+      <div class="gateDeviceTools">
+        <div class="note gateDeviceNote" id="gateDeviceNote">This phone will remember its team until you tell it to leave this device.</div>
+        <button class="full" id="gateLeaveDeviceBtn" type="button">Leave this device</button>
+      </div>
       <div class="spacer"></div>
       <button class="primary full" id="startGameBtn">Start hunt</button>
     </div>
@@ -61,6 +82,7 @@
         <input id="adminTeamName" placeholder="Admin set team name">
         <button class="primary full" id="adminSaveNameBtn">Save team name</button>
         <button class="full" id="adminReloadTeamBtn">Reload team progress</button>
+        <button class="full" id="adminCopySnapshotBtn">Copy status snapshot</button>
         <button class="primary full" id="adminGrantNextBtn">Grant next clue</button>
         <button class="full" id="adminGrantHintBtn">Grant 1 extra hint</button>
         <button class="full" id="adminSkipHintTimerBtn">Skip hint timer</button>
@@ -76,9 +98,11 @@
   <div id="missionOverlay" class="overlay hidden">
     <div class="gateCard missionCard">
       <button id="missionCloseX" class="adminCloseX" aria-label="Close">×</button>
+      <div class="missionStamp" id="missionStamp">CASE FILE OPENED</div>
       <div class="badge" id="missionBadge">✅ Mission update</div>
       <h1 class="gateTitle" id="missionTitle">Mission unlocked</h1>
       <p class="gateCopy" id="missionCopy">You cracked the QR and unlocked your next stop.</p>
+      <div class="missionFlavor" id="missionFlavor">A fresh page just slid out of the dossier.</div>
       <div class="missionMeta" id="missionMeta">Head back to the mission board for your next riddle.</div>
       <div class="spacer"></div>
       <button class="primary full" id="missionActionBtn">Keep hunting</button>
@@ -109,11 +133,36 @@
     </div>
   </header>
 
+  <div class="commandStrip">
+    <div class="commandStripInner">
+      <div class="commandCopy">
+        <div class="teamPill commandTeamPill" id="deviceTeamBadge">No team on this device</div>
+        <div class="commandMeta" id="deviceStatusMeta">Choose a team, claim a mascot, and start the hunt.</div>
+      </div>
+      <div class="commandActions">
+        <div class="syncBadge syncPending" id="syncBadge">Connecting to shared game...</div>
+        <button class="buttonLike hidden" id="leaveDeviceBtn" type="button">Leave this device</button>
+      </div>
+    </div>
+  </div>
+
   <main class="container">
     <section class="hero card">
       <div class="badge">🥚 Sig Tau Easter Treasure Hunt</div>
       <h1>Solve the house, beat the other teams, and claim the candy.</h1>
       <p>Each QR code unlocks only the next clue for your team. This device remembers your team automatically after you join once, so you can jump straight back into the race.</p>
+      <div class="fieldGuide">
+        <div class="fieldGuideRow">
+          <div class="fieldGuideLabel">Field guide</div>
+          <div class="teamThemePill" id="teamThemePill">Mascot theme waiting</div>
+        </div>
+        <div class="heroChecklist">
+          <div class="heroStep">1. Pick your team.</div>
+          <div class="heroStep">2. Crack the current riddle.</div>
+          <div class="heroStep">3. Scan the exact QR for your next unlock.</div>
+          <div class="heroStep">4. Beat the other squads to the candy table.</div>
+        </div>
+      </div>
       <div class="kpis">
         <div class="kpi kpiGreen">
           <div class="small">Progress</div>
@@ -162,6 +211,10 @@
             <div class="small" id="hintsLeft">Hints left: 3</div>
             <div class="note">Go get a challenge from Jillian for an extra hint or to skip the hint timer. Jillian’s favor board can bail you out when the house gets weird.</div>
             <div class="warn" id="hintBox">No hint displayed yet for this active clue.</div>
+            <details class="hintRules">
+              <summary>Hint rules</summary>
+              <div class="small">Each team starts with 3 hints. After you use one, the next hint goes on a 10-minute cooldown unless Jillian grants an extra hint or skips the timer.</div>
+            </details>
           </div>
           <div class="note" id="feedbackBox">Ready to play.</div>
         </div>
@@ -186,6 +239,7 @@
             </div>
           </div>
           <div id="scanStatusBox" class="scanStatus scanStatusIdle">Camera will open automatically.</div>
+          <div class="small scanInsight" id="scanInsight">Wrong-scan tips and cross-team clues will show here.</div>
           <input id="manualCode" placeholder="Paste or type QR code value">
           <button class="primary" id="unlockBtn">Check code</button>
         </div>
@@ -205,6 +259,7 @@
         <div class="card panel">
           <h2>Standings</h2>
           <div id="leadBanner" class="leadBanner">The race is on.</div>
+          <div id="activityTicker" class="activityTicker">Rival movement and admin updates will appear here.</div>
           <div id="leaderboardModeText" class="leaderStatus" hidden></div>
           <div id="sharedModeText" class="leaderStatus" hidden></div>
           <div class="leader" id="leaderboard"></div>
@@ -219,5 +274,6 @@
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="script.js"></script>
+  <script src="immersive.js"></script>
 </body>
 </html>
