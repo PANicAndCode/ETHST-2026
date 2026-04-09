@@ -724,14 +724,26 @@ async function adminSkipHintTimer(){
 
 async function adminResetAll(){
   if (!window.confirm("Reset the full game for every team?")) return;
+  let remoteResetFailed = false;
+  if (supabaseReady) {
+    const progressDelete = await supabaseClient.from("team_progress_sigtau").delete().neq("team_id", SHARED_SETTINGS_TEAM_ID);
+    const boardDelete = await supabaseClient.from("leaderboard_sigtau").delete().neq("team_id", "__never__");
+    if (progressDelete.error || boardDelete.error) {
+      console.error(progressDelete.error || boardDelete.error);
+      remoteResetFailed = true;
+    }
+  }
+  if (remoteResetFailed) {
+    await refreshSharedData();
+    if (el("adminPanelFeedback")) {
+      el("adminPanelFeedback").textContent = "Full reset could not clear shared teams. Run the updated migration SQL once, then try again.";
+    }
+    return;
+  }
   visibleTeamIds().forEach(team => localStorage.removeItem(storageKey(team)));
   localStorage.setItem(leaderboardKey(), JSON.stringify({}));
   liveProgressCache = {};
   liveBoardCache = {};
-  if (supabaseReady) {
-    await supabaseClient.from("team_progress_sigtau").delete().neq("team_id", SHARED_SETTINGS_TEAM_ID);
-    await supabaseClient.from("leaderboard_sigtau").delete().neq("team_id", "__never__");
-  }
   setLocalMapEnabled(true);
   if (supabaseReady) await pushSharedSettings();
   releaseTeamSelection("The full game was reset. Pick a team to join again.");

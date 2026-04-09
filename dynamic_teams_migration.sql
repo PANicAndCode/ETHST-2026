@@ -9,6 +9,12 @@ alter table public.team_progress_sigtau
 alter table public.team_progress_sigtau
   alter column last_updated_at set default 0;
 
+drop policy if exists "leaderboard_sigtau delete" on public.leaderboard_sigtau;
+create policy "leaderboard_sigtau delete" on public.leaderboard_sigtau for delete to anon using (true);
+
+drop policy if exists "progress_sigtau delete" on public.team_progress_sigtau;
+create policy "progress_sigtau delete" on public.team_progress_sigtau for delete to anon using (true);
+
 update public.team_progress_sigtau
 set sequence = case team_id
   when 'Team1' then '[1,2,3,4,5,6,7,8,9,10,11]'::jsonb

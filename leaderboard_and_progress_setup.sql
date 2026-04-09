@@ -34,6 +34,9 @@ create policy "leaderboard_sigtau insert" on public.leaderboard_sigtau for inser
 drop policy if exists "leaderboard_sigtau update" on public.leaderboard_sigtau;
 create policy "leaderboard_sigtau update" on public.leaderboard_sigtau for update to anon using (true) with check (true);
 
+drop policy if exists "leaderboard_sigtau delete" on public.leaderboard_sigtau;
+create policy "leaderboard_sigtau delete" on public.leaderboard_sigtau for delete to anon using (true);
+
 drop policy if exists "progress_sigtau read" on public.team_progress_sigtau;
 create policy "progress_sigtau read" on public.team_progress_sigtau for select to anon using (true);
 
@@ -42,6 +45,9 @@ create policy "progress_sigtau insert" on public.team_progress_sigtau for insert
 
 drop policy if exists "progress_sigtau update" on public.team_progress_sigtau;
 create policy "progress_sigtau update" on public.team_progress_sigtau for update to anon using (true) with check (true);
+
+drop policy if exists "progress_sigtau delete" on public.team_progress_sigtau;
+create policy "progress_sigtau delete" on public.team_progress_sigtau for delete to anon using (true);
 
 do $$
 begin
