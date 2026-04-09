@@ -164,10 +164,15 @@ async function autoResumeRememberedTeam(){
   const remembered = rememberedTeamRecord();
   if (!remembered) return false;
   const saved = remembered.team;
-  const remote = await loadRemoteProgress(saved);
+  const remote = cachedRemoteProgress(saved) || await loadRemoteProgress(saved);
+  if (supabaseReady && sharedDataPrimed && !remote) {
+    localStorage.removeItem(storageKey(saved));
+    releaseTeamSelection("That team is no longer active. Pick a team to join again.");
+    return false;
+  }
   if (remote && Number(remembered.startedAt || 0) !== Number(remote.startedAt || 0)) {
-    clearRememberedTeam(saved);
-    renderGateTeams(null);
+    localStorage.removeItem(storageKey(saved));
+    releaseTeamSelection("That team was reset. Pick a team to join again.");
     return false;
   }
   teamKey = saved;
@@ -187,12 +192,30 @@ async function refreshSharedData(){
   if (!supabaseReady) return;
   await fetchLeaderboard();
   await fetchAllRemoteProgress();
-  if (teamKey) {
-    const remote = await loadRemoteProgress(teamKey);
-    if (remote) {
-      state = remote;
-      await renderAll({ persist: false });
-    }
+  const trackedTeam = teamKey || rememberedTeam();
+  const remembered = rememberedTeamRecord();
+  const remote = trackedTeam ? (cachedRemoteProgress(trackedTeam) || null) : null;
+
+  if (trackedTeam && sharedDataPrimed && !remote) {
+    localStorage.removeItem(storageKey(trackedTeam));
+    releaseTeamSelection("The full game was reset. Pick a team to join again.");
+    renderAdminStatuses();
+    return;
+  }
+
+  const startedChanged = trackedTeam && remembered && remembered.team === trackedTeam && remote
+    && Number(remembered.startedAt || 0) !== Number(remote.startedAt || 0);
+
+  if (startedChanged) {
+    localStorage.removeItem(storageKey(trackedTeam));
+    releaseTeamSelection("That team was reset. Pick a team to join again.");
+    renderAdminStatuses();
+    return;
+  }
+
+  if (teamKey && remote) {
+    state = remote;
+    await renderAll({ persist: false });
   }
   renderAdminStatuses();
 }
